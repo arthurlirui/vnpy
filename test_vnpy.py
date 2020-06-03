@@ -300,7 +300,7 @@ def run2(engine, vt_symbols):
         msg = f"Account，{acc}"
         engine.write_log(msg)
 
-    engine.start_strategy(script_path='/home/lir0b/Code/Trading/vnpy/vnpy/app/algo_trading/algos/test_algo.py')
+    #engine.start_strategy(script_path='/home/lir0b/Code/Trading/vnpy/vnpy/app/algo_trading/algos/test_algo.py')
 
     engine.strategy_active = True
     # 持续运行，使用strategy_active来判断是否要退出程序
