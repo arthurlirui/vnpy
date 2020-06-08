@@ -63,8 +63,32 @@ ORDERTYPE_HUOBI2VT = {v: k for k, v in ORDERTYPE_VT2HUOBI.items()}
 
 INTERVAL_VT2HUOBI = {
     Interval.MINUTE: "1min",
+    Interval.MINUTE_5: "5min",
+    Interval.MINUTE_15: "15min",
+    Interval.MINUTE_30: "30min",
+
     Interval.HOUR: "60min",
-    Interval.DAILY: "1day"
+    Interval.HOUR_4: "4hour",
+
+    Interval.DAILY: "1day",
+
+    Interval.WEEKLY: "1week",
+
+    Interval.MONTHLY: "1mon",
+    Interval.YEARLY: "1year",
+}
+
+HUOBI2INTERVAL_VT = {
+    "1min": Interval.MINUTE,
+    "60min": Interval.HOUR,
+    "1day": Interval.DAILY,
+    "5min": Interval.MINUTE_5,
+    "15min": Interval.MINUTE_15,
+    "30min": Interval.MINUTE_30,
+    "4hour": Interval.HOUR_4,
+    "1week": Interval.WEEKLY,
+    "1mon": Interval.MONTHLY,
+    "1year": Interval.YEARLY,
 }
 
 CHINA_TZ = pytz.timezone("Asia/Shanghai")
@@ -88,6 +112,8 @@ class HuobiGateway(BaseGateway):
     }
 
     exchanges: List[Exchange] = [Exchange.HUOBI]
+
+    default_kline_intervals: List[Interval] = [Interval.MINUTE, Interval.MINUTE_5, Interval.MINUTE_30, Interval.HOUR, Interval.HOUR_4]
 
     def __init__(self, event_engine):
         """Constructor"""
@@ -740,12 +766,23 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
 class HuobiDataWebsocketApi(HuobiWebsocketApiBase):
     """"""
 
+    default_kline_intervals: List[Interval] = [Interval.MINUTE,
+                                               Interval.MINUTE_5,
+                                               Interval.MINUTE_30,
+                                               Interval.HOUR,
+                                               Interval.HOUR_4,
+                                               Interval.DAILY,
+                                               Interval.WEEKLY,
+                                               Interval.MONTHLY,
+                                               Interval.YEARLY]
+
     def __init__(self, gateway):
         """"""
         super().__init__(gateway)
 
         self.req_id: int = 0
         self.ticks: Dict[str, TickData] = {}
+        self.klines: Dict[str, BarData] = {}
 
     def connect(
         self,
@@ -797,6 +834,14 @@ class HuobiDataWebsocketApi(HuobiWebsocketApiBase):
         }
         self.send_packet(req)
 
+        # req.interval
+        # Subscribe to kline 1min, 5min, 15min, 30min, 60min, 4hour, 1day, 1mon, 1week, 1year
+
+        for ii in self.default_kline_intervals:
+            self.req_id += 1
+            req = {"sub": f"market.{symbol}.kline.{INTERVAL_VT2HUOBI[ii]}", "id": str(self.req_id)}
+            self.send_packet(req)
+
     def on_data(self, packet: dict) -> None:
         """"""
         channel = packet.get("ch", None)
@@ -805,6 +850,8 @@ class HuobiDataWebsocketApi(HuobiWebsocketApiBase):
                 self.on_market_depth(packet)
             elif "detail" in channel:
                 self.on_market_detail(packet)
+            elif "kline" in channel:
+                self.on_kline(packet)
         elif "err-code" in packet:
             code = packet["err-code"]
             msg = packet["err-msg"]
@@ -846,6 +893,23 @@ class HuobiDataWebsocketApi(HuobiWebsocketApiBase):
 
         if tick.bid_price_1:
             self.gateway.on_tick(copy(tick))
+
+    def on_kline(self, data: dict):
+        '''
+        :param data:
+        :return:
+        '''
+        symbol = data["ch"].split(".")[1]
+        bar = BarData(symbol=symbol, exchange=Exchange.HUOBI,
+                      datetime=generate_datetime(data["ts"] / 1000),
+                      gateway_name=self.gateway_name)
+        bar.interval = HUOBI2INTERVAL_VT[data["ch"].split(".")[3]]
+        bar.volume = data["tick"]["vol"]
+        bar.open_price = data["tick"]["open"]
+        bar.close_price = data["tick"]["close"]
+        bar.high_price = data["tick"]["high"]
+        bar.low_price = data["tick"]["low"]
+        self.gateway.on_kline(copy(bar))
 
 
 def _split_url(url):

@@ -143,7 +143,6 @@ class Currency(Enum):
     HKD = "HKD"
     CNY = "CNY"
 
-
 class Interval(Enum):
     """
     Interval of bar data.
@@ -152,3 +151,11 @@ class Interval(Enum):
     HOUR = "1h"
     DAILY = "d"
     WEEKLY = "w"
+
+    MINUTE_5 = "5m"
+    MINUTE_15 = "15m"
+    MINUTE_30 = "30m"
+
+    HOUR_4 = "4h"
+    YEARLY = '1y'
+    MONTHLY = '1M'
