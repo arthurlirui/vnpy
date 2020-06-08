@@ -2,7 +2,7 @@
 from vnpy.event import EventEngine, Event
 from vnpy.trader.engine import BaseEngine, MainEngine
 from vnpy.trader.event import (
-    EVENT_TICK, EVENT_TIMER, EVENT_ORDER, EVENT_TRADE)
+    EVENT_TICK, EVENT_TIMER, EVENT_ORDER, EVENT_TRADE, EVENT_KLINE)
 from vnpy.trader.constant import (Direction, Offset, OrderType)
 from vnpy.trader.object import (SubscribeRequest, OrderRequest, LogData)
 from vnpy.trader.utility import load_json, save_json, round_to
@@ -51,6 +51,7 @@ class AlgoEngine(BaseEngine):
         from .algos.grid_algo import GridAlgo
         from .algos.dma_algo import DmaAlgo
         from .algos.arbitrage_algo import ArbitrageAlgo
+        from .algos.test_algo import TestAlgo
 
         self.add_algo_template(TwapAlgo)
         self.add_algo_template(IcebergAlgo)
@@ -60,6 +61,7 @@ class AlgoEngine(BaseEngine):
         self.add_algo_template(GridAlgo)
         self.add_algo_template(DmaAlgo)
         self.add_algo_template(ArbitrageAlgo)
+        self.add_algo_template(TestAlgo)
 
     def add_algo_template(self, template: AlgoTemplate):
         """"""
@@ -84,11 +86,20 @@ class AlgoEngine(BaseEngine):
         self.event_engine.register(EVENT_TIMER, self.process_timer_event)
         self.event_engine.register(EVENT_ORDER, self.process_order_event)
         self.event_engine.register(EVENT_TRADE, self.process_trade_event)
+        self.event_engine.register(EVENT_KLINE, self.process_kline_event)
+
+    def process_kline_event(self, event: Event):
+        """"""
+        bar = event.data
+        print(bar)
+        algos = self.symbol_algo_map.get(bar.vt_symbol, None)
+        if algos:
+            for algo in algos:
+                algo.update_kline(bar)
 
     def process_tick_event(self, event: Event):
         """"""
         tick = event.data
-
         algos = self.symbol_algo_map.get(tick.vt_symbol, None)
         if algos:
             for algo in algos:

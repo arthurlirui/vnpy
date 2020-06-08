@@ -389,8 +389,8 @@ def test_script_engine():
     #default_setting = HuobiGateway.default_setting
 
     huobi_setting = {
-        "API Key": "19a98640-nbtycf4rw2-39356103-11fd8",
-        "Secret Key": "1f2eb44a-59175994-b1774ffd-30396",
+        "API Key": "0a1df25b-120e62af-frbghq7rnm-7128e",
+        "Secret Key": "bc005f19-033581fa-8a140bba-323ed",
         "会话数": 3,
         "代理地址": "",
         "代理端口": "",
@@ -431,8 +431,8 @@ def test_algo():
     gateways = [HuobiGateway]
 
     huobi_setting = {
-        "API Key": "19a98640-nbtycf4rw2-39356103-11fd8",
-        "Secret Key": "1f2eb44a-59175994-b1774ffd-30396",
+        "API Key": "0a1df25b-120e62af-frbghq7rnm-7128e",
+        "Secret Key": "bc005f19-033581fa-8a140bba-323ed",
         "会话数": 3,
         "代理地址": "",
         "代理端口": "",
@@ -446,6 +446,11 @@ def test_algo():
         "proxy_port": 0,
     }
 
+    def process_log_event(event: Event):
+        """"""
+        log = event.data
+        print(f"{log.time}\t{log.msg}")
+
     event_engine = EventEngine()
     event_engine.register(EVENT_LOG, process_log_event)
 
@@ -453,30 +458,62 @@ def test_algo():
     for gateway in gateways:
         main_engine.add_gateway(gateway)
 
-    script_engine = init_cli_trading(gateways)
-    script_engine.connect_gateway(huobi_setting, 'HUOBI')
-
-    time.sleep(10)
-    #algo_engine = main_engine.add_engine(AlgoEngine)
-    algo_engine = AlgoEngine(main_engine=main_engine, event_engine=event_engine)
-
-    #algo_engine.connect_gateway(huobi_setting, 'HUOBI')
+    main_engine.connect(huobi_setting, 'HUOBI')
 
     time.sleep(10)
 
-    default_setting = {
-        "template_name": "TestAlgo",
-        "vt_symbol": "btcusdt.HUOBI",
-        "interval": 5000
-    }
-    test_algo = TestAlgo(algo_engine=algo_engine, algo_name='TestAlgo', setting=default_setting)
+    algo_engine = main_engine.add_engine(AlgoEngine)
+
+    print(main_engine.engines)
+    test_algo_setting = {"template_name": 'TestAlgo', "vt_symbol": "btcusdt.HUOBI", "interval": 5000}
+
+    #test_algo_1 = TestAlgo(algo_engine, 'test_algo_1', test_algo_setting)
 
     algo_engine.add_algo_template(TestAlgo)
 
-    algo_engine.start_algo(default_setting)
+    #test_algo = TestAlgo()
+
+    print(algo_engine.algo_templates)
+    #algo_engine.algo_templates['TestAlgo'].active = True
+    print(test_algo_setting)
+    #algo_name = algo_engine.start_algo(test_algo_setting)
+    #test_algo_01 = algo_engine.algos[algo_name]
+    #print(TestAlgo.__name__)
+    #print(algo_name)
+    vt_symbol = "btcusdt.HUOBI"
+    algo_engine.subscribe(TestAlgo, vt_symbol)
+    while True:
+        sleep(1)
+
+    # contract = algo_engine.get_contract(TestAlgo, vt_symbol)
+    # msg = f"合约信息，{contract}"
+    # print(contract)
+    # algo_engine.write_log(msg)
+
+    # algo_engine.strategy_active = True
+    # while algo_engine.strategy_active:
+    #     tick = algo_engine.get_tick(TestAlgo, vt_symbol)
+    #     msg = f"最新行情, {tick}"
+    #     print(tick)
+    #     algo_engine.write_log(msg)
+
+    #algo_engine.connect_gateway(huobi_setting, 'HUOBI')
+
+    #time.sleep(10)
+
+    # default_setting = {
+    #     "template_name": "TestAlgo",
+    #     "vt_symbol": "btcusdt.HUOBI",
+    #     "interval": 5000
+    # }
+    # test_algo = TestAlgo(algo_engine=algo_engine, algo_name='TestAlgo', setting=default_setting)
+    #
+    # algo_engine.add_algo_template(TestAlgo)
+    #
+    # algo_engine.start_algo(default_setting)
 
     #vt_symbols = ['btcusdt.HUOBI', 'ethusdt.HUOBI']
-    vt_symbols = ['btcusdt.HUOBI']
+    #vt_symbols = ['btcusdt.HUOBI']
     #script_engine.subscribe(vt_symbols=vt_symbols)
     # need time to connect to gateway
     #time.sleep(3)
@@ -485,40 +522,41 @@ def test_algo():
 
 
     # 订阅行情
-    for vt_symbol in vt_symbols:
-        print(vt_symbol)
-        algo_engine.subscribe(test_algo, vt_symbol)
+    # for vt_symbol in vt_symbols:
+    #     print(vt_symbol)
+    #     algo_engine.subscribe(test_algo, vt_symbol)
 
-    default_setting = {
-        "template_name": "TestAlgo",
-        "vt_symbol": "btcusdt.HUOBI",
-        "interval": 5000
-    }
-    #engine.start_algo(default_setting)
-
-    # 获取合约信息
-    for vt_symbol in vt_symbols:
-        #print(vt_symbol)
-        contract = algo_engine.get_contract(test_algo, vt_symbol)
-        msg = f"合约信息，{contract}"
-        print(contract)
-        algo_engine.write_log(msg)
-
-    algo_engine.strategy_active = True
-    while algo_engine.strategy_active:
-        # 轮询获取行情
-        for vt_symbol in vt_symbols:
-            tick = algo_engine.get_tick(test_algo, vt_symbol)
-            #print(tick.symbol)
-            msg = f"最新行情, {tick}"
-            print(tick)
-            algo_engine.write_log(msg)
-
-        # 等待3秒进入下一轮
-        time.sleep(0.1)
+    # default_setting = {
+    #     "template_name": "TestAlgo",
+    #     "vt_symbol": "btcusdt.HUOBI",
+    #     "interval": 5000
+    # }
+    # #engine.start_algo(default_setting)
+    #
+    # # 获取合约信息
+    # for vt_symbol in vt_symbols:
+    #     #print(vt_symbol)
+    #     contract = algo_engine.get_contract(test_algo, vt_symbol)
+    #     msg = f"合约信息，{contract}"
+    #     print(contract)
+    #     algo_engine.write_log(msg)
+    #
+    # algo_engine.strategy_active = True
+    # while algo_engine.strategy_active:
+    #     # 轮询获取行情
+    #     for vt_symbol in vt_symbols:
+    #         tick = algo_engine.get_tick(test_algo, vt_symbol)
+    #         #print(tick.symbol)
+    #         msg = f"最新行情, {tick}"
+    #         print(tick)
+    #         algo_engine.write_log(msg)
+    #
+    #     # 等待3秒进入下一轮
+    #     time.sleep(0.1)
 
 
 if __name__ == "__main__":
     print('Start')
-    test_script_engine()
+    #test_script_engine()
+    test_algo()
     print('End')
