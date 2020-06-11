@@ -7,6 +7,7 @@ from datetime import datetime
 from logging import INFO
 
 from .constant import Direction, Exchange, Interval, Offset, Status, Product, OptionType, OrderType
+import numpy as np
 
 ACTIVE_STATUSES = set([Status.SUBMITTING, Status.NOTTRADED, Status.PARTTRADED])
 
@@ -41,6 +42,7 @@ class TickData(BaseData):
     last_volume: float = 0
     limit_up: float = 0
     limit_down: float = 0
+    direction: Direction = None
 
     open_price: float = 0
     high_price: float = 0
@@ -97,6 +99,45 @@ class BarData(BaseData):
     def __post_init__(self):
         """"""
         self.vt_symbol = f"{self.symbol}.{self.exchange.value}"
+
+
+@dataclass
+class VlineData(BaseData):
+    """
+    Candlestick bar data of a certain trading period.
+    """
+
+    symbol: str
+    exchange: Exchange
+    open_time: datetime
+    close_time: datetime
+
+    volume: float = 0.0
+    open_price: float = 0
+    high_price: float = 0
+    low_price: float = 0
+    close_price: float = 0
+
+    def __post_init__(self):
+        """"""
+        self.vt_symbol = f"{self.symbol}.{self.exchange.value}"
+
+    def __add__(self, other):
+        symbol = self.symbol
+        exchange = self.exchange
+        open_time = self.open_time
+        close_time = other.close_time
+
+        volume = self.volume + other.volume
+        open_price = self.open_price
+        close_price = other.close_price
+        high_price = max(self.high_price, other.high_price)
+        low_price = min(self.low_price, other.low_price)
+        t = VlineData(symbol=symbol, exchange=exchange, open_time=open_time, close_time=close_time,
+                      gateway_name=self.gateway_name,
+                      volume=volume, open_price=open_price, close_price=close_price,
+                      high_price=high_price, low_price=low_price)
+        return t
 
 
 @dataclass

@@ -1,5 +1,5 @@
 from vnpy.trader.constant import Direction
-from vnpy.trader.object import TradeData, OrderData, TickData, BarData
+from vnpy.trader.object import TradeData, OrderData, TickData, BarData, VlineData
 from vnpy.trader.engine import BaseEngine
 
 from vnpy.app.algo_trading import AlgoTemplate
@@ -41,6 +41,8 @@ class TestAlgo(AlgoTemplate):
         self.vt_symbol = setting["vt_symbol"]
         self.interval = setting["interval"]
 
+        self.symbol = self.vt_symbol.split('.')[0]
+
         # Variables
         self.active_vt_orderid = ""
         self.passive_vt_orderid = ""
@@ -53,8 +55,12 @@ class TestAlgo(AlgoTemplate):
         self.tick_list = []
         self.tick = None
 
-        self.klines = {self.vt_symbol: []}
-        self.kline = None
+        self.vline_vol = 5
+        self.vline = None
+        self.vlines = {}
+
+        self.klines = {}
+        #self.kline = None
 
         self.event_engine = algo_engine.event_engine
 
@@ -85,6 +91,29 @@ class TestAlgo(AlgoTemplate):
             self.write_log(msg)
         self.put_variables_event()
 
+    def on_market_trade(self, trade: TradeData):
+        """"""
+        # update vline
+        if self.vline is not None:
+            vline_new = VlineData(symbol=trade.symbol, exchange=trade.exchange,
+                                  open_time=trade.datetime, close_time=trade.datetime, gateway_name=trade.gateway_name,
+                                  volume=trade.volume, open_price=trade.price, close_price=trade.price,
+                                  high_price=trade.price, low_price=trade.price)
+
+            self.vline = self.vline + vline_new
+            #print(self.tick)
+            #print(self.vline)
+            if self.vline.volume > self.vline_vol:
+                msg = f'{self.vline.vt_symbol} OP:{self.vline.open_price} CP:{self.vline.close_price} V:{self.vline.volume} ' \
+                      f'OT:{self.vline.open_time} CT:{self.vline.close_time}'
+                self.write_log(msg)
+                self.vline = None
+        else:
+            self.vline = VlineData(symbol=trade.symbol, exchange=trade.exchange,
+                                   open_time=trade.datetime, close_time=trade.datetime, gateway_name=trade.gateway_name,
+                                   volume=trade.volume, open_price=trade.price, close_price=trade.price,
+                                   high_price=trade.price, low_price=trade.price)
+
     def on_timer(self):
         """"""
         # Run algo by fixed interval
@@ -92,16 +121,16 @@ class TestAlgo(AlgoTemplate):
         #msg = f'Count:{self.timer_count}'
         #self.write_log(msg)
 
-        if self.timer_count == 20:
-            self.buy(vt_symbol=self.vt_symbol,
-                     price=self.tick.last_price-300,
-                     volume=0.01)
-        if self.timer_count == 40:
-            self.sell(vt_symbol=self.vt_symbol,
-                      price=self.tick.last_price+300,
-                      volume=0.01)
-        if self.timer_count == 100:
-            self.cancel_all()
+        # if self.timer_count == 20:
+        #     self.buy(vt_symbol=self.vt_symbol,
+        #              price=self.tick.last_price-300,
+        #              volume=0.01)
+        # if self.timer_count == 40:
+        #     self.sell(vt_symbol=self.vt_symbol,
+        #               price=self.tick.last_price+300,
+        #               volume=0.01)
+        # if self.timer_count == 100:
+        #     self.cancel_all()
 
         # Update GUI
         self.put_variables_event()
@@ -124,8 +153,8 @@ class TestAlgo(AlgoTemplate):
             self.write_log(msg)
 
         self.tick = tick
-        #print(tick)
 
+        # update vline here
         self.put_variables_event()
 
     def update_tick(self, tick: TickData):
@@ -138,10 +167,14 @@ class TestAlgo(AlgoTemplate):
             self.on_kline(bar)
 
     def on_kline(self, bar: BarData):
+        key = bar.symbol+'.'+bar.exchange.value+'.'+bar.interval.value
+        self.klines[key] = bar
         #self.klines[bar.symbol].append(bar)
         #self.kline = bar
-        msg = f'KL-{bar.interval}: {bar.symbol} OP: {bar.open_price} CP: {bar.close_price} HP: {bar.high_price} LP: {bar.low_price}'
-        self.write_log(msg)
+        #pprint(self.klines)
+        #msg = f'KL-{bar.interval}: {bar.symbol}.{bar.exchange} OP: {bar.open_price} HP: {bar.high_price} LP: {bar.low_price} V: {bar.volume}'
+        #msg = f'{bar}'
+        #self.write_log(msg)
 
 
 

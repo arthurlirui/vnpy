@@ -2,7 +2,7 @@
 from vnpy.event import EventEngine, Event
 from vnpy.trader.engine import BaseEngine, MainEngine
 from vnpy.trader.event import (
-    EVENT_TICK, EVENT_TIMER, EVENT_ORDER, EVENT_TRADE, EVENT_KLINE)
+    EVENT_TICK, EVENT_TIMER, EVENT_ORDER, EVENT_TRADE, EVENT_KLINE, EVENT_MARKET_TRADE)
 from vnpy.trader.constant import (Direction, Offset, OrderType)
 from vnpy.trader.object import (SubscribeRequest, OrderRequest, LogData)
 from vnpy.trader.utility import load_json, save_json, round_to
@@ -87,11 +87,12 @@ class AlgoEngine(BaseEngine):
         self.event_engine.register(EVENT_ORDER, self.process_order_event)
         self.event_engine.register(EVENT_TRADE, self.process_trade_event)
         self.event_engine.register(EVENT_KLINE, self.process_kline_event)
+        self.event_engine.register(EVENT_MARKET_TRADE, self.process_market_trade_event)
 
     def process_kline_event(self, event: Event):
         """"""
         bar = event.data
-        print(bar)
+        #print(bar)
         algos = self.symbol_algo_map.get(bar.vt_symbol, None)
         if algos:
             for algo in algos:
@@ -120,6 +121,13 @@ class AlgoEngine(BaseEngine):
         algo = self.orderid_algo_map.get(trade.vt_orderid, None)
         if algo:
             algo.update_trade(trade)
+
+    def process_market_trade_event(self, event: Event):
+        market_trade = event.data
+        algos = self.symbol_algo_map.get(market_trade.vt_symbol, None)
+        if algos:
+            for algo in algos:
+                algo.update_market_trade(market_trade)
 
     def process_order_event(self, event: Event):
         """"""

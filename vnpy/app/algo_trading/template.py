@@ -55,6 +55,11 @@ class AlgoTemplate:
         if self.active:
             self.on_trade(trade)
 
+    def update_market_trade(self, trade: TradeData):
+        """"""
+        if self.active:
+            self.on_market_trade(trade)
+
     def update_timer(self):
         """"""
         if self.active:
@@ -81,6 +86,11 @@ class AlgoTemplate:
 
     @virtual
     def on_trade(self, trade: TradeData):
+        """"""
+        pass
+
+    @virtual
+    def on_market_trade(self, trade: TradeData):
         """"""
         pass
 

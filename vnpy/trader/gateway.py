@@ -16,6 +16,7 @@ from .event import (
     EVENT_CONTRACT,
     EVENT_LOG,
     EVENT_KLINE,
+    EVENT_MARKET_TRADE,
 )
 from .object import (
     TickData,
@@ -110,6 +111,10 @@ class BaseGateway(ABC):
         """
         self.on_event(EVENT_TRADE, trade)
         self.on_event(EVENT_TRADE + trade.vt_symbol, trade)
+
+    def on_market_trade(self, trade: TradeData) -> None:
+        self.on_event(EVENT_MARKET_TRADE, trade)
+        self.on_event(EVENT_MARKET_TRADE + trade.vt_symbol, trade)
 
     def on_order(self, order: OrderData) -> None:
         """

@@ -783,6 +783,7 @@ class HuobiDataWebsocketApi(HuobiWebsocketApiBase):
         self.req_id: int = 0
         self.ticks: Dict[str, TickData] = {}
         self.klines: Dict[str, BarData] = {}
+        self.trades: Dict[str, TradeData] = {}
 
     def connect(
         self,
@@ -818,6 +819,22 @@ class HuobiDataWebsocketApi(HuobiWebsocketApiBase):
         )
         self.ticks[symbol] = tick
 
+        # create kline buffer
+        bar = BarData(symbol=symbol,
+                      exchange=Exchange.HUOBI,
+                      datetime=datetime.now(CHINA_TZ),
+                      gateway_name=self.gateway_name)
+
+        self.klines[symbol] = bar
+
+        # create market trades buffer
+        market_trade = TradeData(symbol=symbol,
+                                 exchange=Exchange.HUOBI,
+                                 datetime=datetime.now(CHINA_TZ),
+                                 gateway_name=self.gateway_name, orderid='', tradeid='')
+
+        self.trades[symbol] = market_trade
+
         # Subscribe to market depth update
         self.req_id += 1
         req = {
@@ -834,13 +851,16 @@ class HuobiDataWebsocketApi(HuobiWebsocketApiBase):
         }
         self.send_packet(req)
 
-        # req.interval
         # Subscribe to kline 1min, 5min, 15min, 30min, 60min, 4hour, 1day, 1mon, 1week, 1year
-
         for ii in self.default_kline_intervals:
             self.req_id += 1
             req = {"sub": f"market.{symbol}.kline.{INTERVAL_VT2HUOBI[ii]}", "id": str(self.req_id)}
             self.send_packet(req)
+
+        # subscribe market trades
+        self.req_id += 1
+        req = {"sub": f"market.{symbol}.trade.detail", "id": str(self.req_id)}
+        self.send_packet(req)
 
     def on_data(self, packet: dict) -> None:
         """"""
@@ -849,7 +869,10 @@ class HuobiDataWebsocketApi(HuobiWebsocketApiBase):
             if "depth.step" in channel:
                 self.on_market_depth(packet)
             elif "detail" in channel:
-                self.on_market_detail(packet)
+                if "trade" in channel:
+                    self.on_market_trade(packet)
+                else:
+                    self.on_market_detail(packet)
             elif "kline" in channel:
                 self.on_kline(packet)
         elif "err-code" in packet:
@@ -893,6 +916,26 @@ class HuobiDataWebsocketApi(HuobiWebsocketApiBase):
 
         if tick.bid_price_1:
             self.gateway.on_tick(copy(tick))
+
+    def on_market_trade(self, data: dict):
+        symbol = data['ch'].split('.')[1]
+        market_trade = self.trades[symbol]
+        trade_data = data['tick']['data']
+        for td in trade_data:
+            price = td['price']
+            volume = td['amount']
+            tradeid = td['tradeId']
+            market_trade.datetime = generate_datetime(td["ts"] / 1000)
+            market_trade.price = price
+            market_trade.volume = volume
+            market_trade.tradeid = tradeid
+            raw_direction = td['direction']
+            if raw_direction == 'buy':
+                direction = Direction.LONG
+            elif raw_direction == 'sell':
+                direction = Direction.SHORT
+            market_trade.direction = direction
+            self.gateway.on_market_trade(copy(market_trade))
 
     def on_kline(self, data: dict):
         '''
