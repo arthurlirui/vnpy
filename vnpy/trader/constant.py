@@ -160,3 +160,12 @@ class Interval(Enum):
     HOUR_4 = "4h"
     YEARLY = '1y'
     MONTHLY = '1M'
+
+
+class FeatureType(Enum):
+    '''
+    Calculate Feature in Learning System
+    '''
+    VLINE = 'vline'
+    KLINE = 'kline'
+    TICK = 'tick'

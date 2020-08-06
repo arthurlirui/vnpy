@@ -9,7 +9,7 @@ class BaseApp(ABC):
     """
 
     app_name: str = ""           # Unique name used for creating engine and widget
-    app_module: str = ""         # App module string used in import_module
+    app_module: str = ""         # App module_bak string used in import_module
     app_path: str = ""           # Absolute path of app folder
     display_name: str = ""       # Name for display on the menu.
     engine_class = None     # App engine class

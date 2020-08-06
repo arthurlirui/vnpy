@@ -104,7 +104,7 @@ class BarData(BaseData):
 @dataclass
 class VlineData(BaseData):
     """
-    Candlestick bar data of a certain trading period.
+    Candlestick vline data of a certain trading volume.
     """
 
     symbol: str

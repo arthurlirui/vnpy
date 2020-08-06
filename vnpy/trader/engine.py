@@ -255,7 +255,7 @@ class BaseEngine(ABC):
 
 class LogEngine(BaseEngine):
     """
-    Processes log event and output with logging module.
+    Processes log event and output with logging module_bak.
     """
 
     def __init__(self, main_engine: MainEngine, event_engine: EventEngine):

@@ -13,7 +13,7 @@ from math import floor, ceil
 import numpy as np
 import talib
 
-from .object import BarData, TickData
+from .object import BarData, TickData, VlineData, TradeData
 from .constant import Exchange, Interval
 
 
@@ -158,6 +158,202 @@ def get_digits(value: float) -> int:
     else:
         _, buf = value_str.split(".")
         return len(buf)
+
+
+class VlineGenerator:
+    '''
+    For
+    1. Generate 1 volume vline from tick data
+    2. Merge vol_list volume size for vline
+    '''
+    def __init__(
+        self,
+        on_single_vline: Callable,
+        vol: float = 1.0,
+        on_vline: Callable = None,
+        vol_list: list = [1, 10, 20]
+    ):
+        """Constructor"""
+        self.vline: VlineData = None
+        self.on_single_vline: Callable = on_single_vline
+
+        self.vol: float = vol
+        self.total_vol: float = 0
+
+        self.vol_list: list = vol_list
+        self.vline_buf = {}
+        for v in self.vol_list:
+            self.vline_buf[v] = []
+
+        self.on_vline: Callable = on_vline
+
+        self.last_tick: TickData = None
+        self.last_vline: VlineData = None
+
+    def update_vline(self, tick: TickData) -> None:
+        """
+        Update new tick data into generator.
+        """
+        # 1. process None last tick and None last vline
+        # 2. update last vline for each trade
+        # 3. check volume to update other all vline in list
+
+        # 1.1 init last trade
+        if not self.last_tick:
+            self.last_tick = tick
+
+        # 1.2 init last vline
+        if self.last_tick.datetime > tick.datetime:
+            return
+
+        vd = VlineData(symbol=tick.symbol,
+                       exchange=tick.exchange,
+                       open_time=tick.datetime,
+                       close_time=tick.datetime,
+                       volume=tick.volume,
+                       open_price=tick.last_price,
+                       close_price=tick.last_price,
+                       high_price=tick.last_price,
+                       low_price=tick.last_price)
+
+        if not self.last_vline:
+            self.last_vline = vd
+            return
+        else:
+            self.last_vline = self.last_vline + vd
+            if self.last_vline.volume > self.vol:
+                self.on_single_vline(self.last_vline)
+                for v in self.vol_list:
+                    self.vline_buf[v].append(self.last_vline)
+
+        # 2.2 check vline_buf to udpate new vline
+        for v in self.vol_list:
+            if len(self.vline_buf[v]) >= v:
+                self.on_vline(self.vline_buf[v])
+                self.vline_buf[v] = []
+
+    def update_tick(self, tick: TickData) -> None:
+        """
+        Update new tick data into generator.
+        """
+        new_minute = False
+
+        # Filter tick data with 0 last price
+        if not tick.last_price:
+            return
+
+        # Filter tick data with older timestamp
+        if self.last_tick and tick.datetime < self.last_tick.datetime:
+            return
+
+        if not self.bar:
+            new_minute = True
+        elif self.bar.datetime.minute != tick.datetime.minute:
+            self.bar.datetime = self.bar.datetime.replace(
+                second=0, microsecond=0
+            )
+            self.on_bar(self.bar)
+
+            new_minute = True
+
+        if new_minute:
+            self.bar = BarData(
+                symbol=tick.symbol,
+                exchange=tick.exchange,
+                interval=Interval.MINUTE,
+                datetime=tick.datetime,
+                gateway_name=tick.gateway_name,
+                open_price=tick.last_price,
+                high_price=tick.last_price,
+                low_price=tick.last_price,
+                close_price=tick.last_price,
+                open_interest=tick.open_interest
+            )
+        else:
+            self.bar.high_price = max(self.bar.high_price, tick.last_price)
+            self.bar.low_price = min(self.bar.low_price, tick.last_price)
+            self.bar.close_price = tick.last_price
+            self.bar.open_interest = tick.open_interest
+            self.bar.datetime = tick.datetime
+
+        if self.last_tick:
+            volume_change = tick.volume - self.last_tick.volume
+            self.bar.volume += max(volume_change, 0)
+
+        self.last_tick = tick
+
+    def update_bar(self, bar: BarData) -> None:
+        """
+        Update 1 minute bar into generator
+        """
+        # If not inited, creaate window bar object
+        if not self.window_bar:
+            # Generate timestamp for bar data
+            if self.interval == Interval.MINUTE:
+                dt = bar.datetime.replace(second=0, microsecond=0)
+            else:
+                dt = bar.datetime.replace(minute=0, second=0, microsecond=0)
+
+            self.window_bar = BarData(
+                symbol=bar.symbol,
+                exchange=bar.exchange,
+                datetime=dt,
+                gateway_name=bar.gateway_name,
+                open_price=bar.open_price,
+                high_price=bar.high_price,
+                low_price=bar.low_price
+            )
+        # Otherwise, update high/low price into window bar
+        else:
+            self.window_bar.high_price = max(
+                self.window_bar.high_price, bar.high_price)
+            self.window_bar.low_price = min(
+                self.window_bar.low_price, bar.low_price)
+
+        # Update close price/volume into window bar
+        self.window_bar.close_price = bar.close_price
+        self.window_bar.volume += int(bar.volume)
+        self.window_bar.open_interest = bar.open_interest
+
+        # Check if window bar completed
+        finished = False
+
+        if self.interval == Interval.MINUTE:
+            # x-minute bar
+            if not (bar.datetime.minute + 1) % self.window:
+                finished = True
+        elif self.interval == Interval.HOUR:
+            if self.last_bar and bar.datetime.hour != self.last_bar.datetime.hour:
+                # 1-hour bar
+                if self.window == 1:
+                    finished = True
+                # x-hour bar
+                else:
+                    self.interval_count += 1
+
+                    if not self.interval_count % self.window:
+                        finished = True
+                        self.interval_count = 0
+
+        if finished:
+            self.on_window_bar(self.window_bar)
+            self.window_bar = None
+
+        # Cache last bar object
+        self.last_bar = bar
+
+    def generate(self) -> None:
+        """
+        Generate the bar data and call callback immediately.
+        """
+        bar = self.bar
+
+        if self.bar:
+            bar.datetime = bar.datetime.replace(second=0, microsecond=0)
+            self.on_bar(bar)
+
+        self.bar = None
+        return bar
 
 
 class BarGenerator:
