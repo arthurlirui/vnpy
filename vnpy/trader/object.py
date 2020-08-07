@@ -107,16 +107,17 @@ class VlineData(BaseData):
     Candlestick vline data of a certain trading volume.
     """
 
-    symbol: str
-    exchange: Exchange
-    open_time: datetime
-    close_time: datetime
+    symbol: str = 'BTCUSDT'
+    exchange: Exchange = Exchange.HUOBI
+    open_time: datetime = datetime.today()
+    close_time: datetime = datetime.today()
 
     volume: float = 0.0
     open_price: float = 0
     high_price: float = 0
     low_price: float = 0
     close_price: float = 0
+    gateway_name: str = 'HUOBI'
 
     def __post_init__(self):
         """"""
@@ -138,6 +139,29 @@ class VlineData(BaseData):
                       volume=volume, open_price=open_price, close_price=close_price,
                       high_price=high_price, low_price=low_price)
         return t
+
+    def init_by_tick(self, tick: TickData):
+        self.symbol = tick.symbol
+        self.exchange = tick.exchange
+        self.open_time = tick.datetime
+        self.close_time = tick.datetime
+
+        self.volume = tick.volume
+        self.open_price = tick.last_price
+        self.close_price = tick.last_price
+        self.high_price = tick.last_price
+        self.low_price = tick.last_price
+        self.gateway_name = tick.gateway_name
+
+    def add_tick(self, tick: TickData):
+        if self.symbol == tick.symbol and self.exchange == tick.exchange:
+            if self.open_time < tick.datetime and self.close_time < tick.datetime:
+                self.close_time = tick.datetime
+                self.volume = self.volume + tick.last_volume
+                self.close_price = tick.last_price
+                self.high_price = max(self.high_price, tick.last_price)
+                self.low_price = min(self.low_price, tick.last_price)
+                print(self.open_time, self.volume)
 
 
 @dataclass

@@ -168,27 +168,89 @@ class VlineGenerator:
     '''
     def __init__(
         self,
-        on_single_vline: Callable,
+        on_vline: Callable,
         vol: float = 1.0,
-        on_vline: Callable = None,
-        vol_list: list = [1, 10, 20]
+        #on_vline: Callable = None,
+        #vol_list: list = [1, 10, 20]
     ):
         """Constructor"""
         self.vline: VlineData = None
-        self.on_single_vline: Callable = on_single_vline
-
-        self.vol: float = vol
-        self.total_vol: float = 0
-
-        self.vol_list: list = vol_list
-        self.vline_buf = {}
-        for v in self.vol_list:
-            self.vline_buf[v] = []
-
         self.on_vline: Callable = on_vline
+        self.vol: float = vol
+
+        #self.total_vol: float = 0
+        #self.vol_list: list = vol_list
+        #self.vline_buf = {}
+        #for v in self.vol_list:
+        #    self.vline_buf[v] = []
 
         self.last_tick: TickData = None
         self.last_vline: VlineData = None
+        self.last_bar: BarData = None
+
+    def update_tick(self, tick: TickData) -> None:
+        """
+        Update new tick data into generator.
+        """
+        #new_minute = False
+        new_vline = False
+
+        # Filter tick data with 0 last price
+        if not tick.last_price:
+            return
+
+        # Filter tick data with older timestamp
+        if self.last_tick and tick.datetime < self.last_tick.datetime:
+            return
+
+        # process new minute for bar data
+        # if not self.bar:
+        #     new_minute = True
+        # elif self.bar.datetime.minute != tick.datetime.minute:
+        #     self.bar.datetime = self.bar.datetime.replace(
+        #         second=0, microsecond=0
+        #     )
+        #     self.on_bar(self.bar)
+        #     new_minute = True
+        #
+        # if new_minute:
+        #     self.bar = BarData(
+        #         symbol=tick.symbol,
+        #         exchange=tick.exchange,
+        #         interval=Interval.MINUTE,
+        #         datetime=tick.datetime,
+        #         gateway_name=tick.gateway_name,
+        #         open_price=tick.last_price,
+        #         high_price=tick.last_price,
+        #         low_price=tick.last_price,
+        #         close_price=tick.last_price,
+        #         open_interest=tick.open_interest
+        #     )
+        # else:
+        #     self.bar.high_price = max(self.bar.high_price, tick.last_price)
+        #     self.bar.low_price = min(self.bar.low_price, tick.last_price)
+        #     self.bar.close_price = tick.last_price
+        #     self.bar.open_interest = tick.open_interest
+        #     self.bar.datetime = tick.datetime
+
+        if not self.vline:
+            new_vline = True
+        elif self.vline.volume > self.vol:
+            print(self.vline)
+            self.on_vline(self.vline)
+            new_vline = True
+
+        if new_vline:
+            self.vline = VlineData()
+            self.vline.init_by_tick(tick)
+        else:
+            self.vline.add_tick(tick)
+
+        if self.last_tick:
+            volume_change = tick.volume - self.last_tick.volume
+            #self.bar.volume += max(volume_change, 0)
+
+        self.last_tick = tick
 
     def update_vline(self, tick: TickData) -> None:
         """
@@ -232,55 +294,7 @@ class VlineGenerator:
                 self.on_vline(self.vline_buf[v])
                 self.vline_buf[v] = []
 
-    def update_tick(self, tick: TickData) -> None:
-        """
-        Update new tick data into generator.
-        """
-        new_minute = False
 
-        # Filter tick data with 0 last price
-        if not tick.last_price:
-            return
-
-        # Filter tick data with older timestamp
-        if self.last_tick and tick.datetime < self.last_tick.datetime:
-            return
-
-        if not self.bar:
-            new_minute = True
-        elif self.bar.datetime.minute != tick.datetime.minute:
-            self.bar.datetime = self.bar.datetime.replace(
-                second=0, microsecond=0
-            )
-            self.on_bar(self.bar)
-
-            new_minute = True
-
-        if new_minute:
-            self.bar = BarData(
-                symbol=tick.symbol,
-                exchange=tick.exchange,
-                interval=Interval.MINUTE,
-                datetime=tick.datetime,
-                gateway_name=tick.gateway_name,
-                open_price=tick.last_price,
-                high_price=tick.last_price,
-                low_price=tick.last_price,
-                close_price=tick.last_price,
-                open_interest=tick.open_interest
-            )
-        else:
-            self.bar.high_price = max(self.bar.high_price, tick.last_price)
-            self.bar.low_price = min(self.bar.low_price, tick.last_price)
-            self.bar.close_price = tick.last_price
-            self.bar.open_interest = tick.open_interest
-            self.bar.datetime = tick.datetime
-
-        if self.last_tick:
-            volume_change = tick.volume - self.last_tick.volume
-            self.bar.volume += max(volume_change, 0)
-
-        self.last_tick = tick
 
     def update_bar(self, bar: BarData) -> None:
         """
