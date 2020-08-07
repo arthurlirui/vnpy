@@ -24,7 +24,9 @@ def test_vline_generator():
 
     buf = []
     func = lambda x: buf.append(x)
-    vg = VlineGenerator(on_vline=func, vol=10)
+    bar_buf = []
+    func2 = lambda  x: bar_buf.append(x)
+    vg = VlineGenerator(on_vline=func, vol=10, on_bar=func2, interval=Interval.MINUTE)
     for i, row in ndf.iterrows():
         #print(row)
         tick = TickData(symbol=symbol, exchange=Exchange.HUOBI,
@@ -32,7 +34,12 @@ def test_vline_generator():
                         datetime=i, gateway_name=gateway_name)
         #print(tick)
         vg.update_tick(tick)
-        print(len(buf))
+        #print(len(buf))
+        if len(buf) > 0:
+            print(vg.vline)
+        #print(len(bar_buf))
+        #if len(bar_buf) > 0:
+        #    print(bar_buf[-1])
 
 
 if __name__ == '__main__':

@@ -170,13 +170,16 @@ class VlineGenerator:
         self,
         on_vline: Callable,
         vol: float = 1.0,
-        #on_vline: Callable = None,
-        #vol_list: list = [1, 10, 20]
+        on_bar: Callable = None,
+        interval: Interval = Interval.MINUTE
     ):
         """Constructor"""
         self.vline: VlineData = None
         self.on_vline: Callable = on_vline
         self.vol: float = vol
+
+        self.bar: BarData = None
+        self.on_bar: Callable = on_bar
 
         #self.total_vol: float = 0
         #self.vol_list: list = vol_list
@@ -192,7 +195,7 @@ class VlineGenerator:
         """
         Update new tick data into generator.
         """
-        #new_minute = False
+        new_minute = False
         new_vline = False
 
         # Filter tick data with 0 last price
@@ -203,40 +206,21 @@ class VlineGenerator:
         if self.last_tick and tick.datetime < self.last_tick.datetime:
             return
 
-        # process new minute for bar data
-        # if not self.bar:
-        #     new_minute = True
-        # elif self.bar.datetime.minute != tick.datetime.minute:
-        #     self.bar.datetime = self.bar.datetime.replace(
-        #         second=0, microsecond=0
-        #     )
-        #     self.on_bar(self.bar)
-        #     new_minute = True
-        #
-        # if new_minute:
-        #     self.bar = BarData(
-        #         symbol=tick.symbol,
-        #         exchange=tick.exchange,
-        #         interval=Interval.MINUTE,
-        #         datetime=tick.datetime,
-        #         gateway_name=tick.gateway_name,
-        #         open_price=tick.last_price,
-        #         high_price=tick.last_price,
-        #         low_price=tick.last_price,
-        #         close_price=tick.last_price,
-        #         open_interest=tick.open_interest
-        #     )
-        # else:
-        #     self.bar.high_price = max(self.bar.high_price, tick.last_price)
-        #     self.bar.low_price = min(self.bar.low_price, tick.last_price)
-        #     self.bar.close_price = tick.last_price
-        #     self.bar.open_interest = tick.open_interest
-        #     self.bar.datetime = tick.datetime
+        if not self.bar:
+            new_minute = True
+        elif self.bar.datetime.minute != tick.datetime.minute:
+            self.bar.datetime = self.bar.datetime.replace(second=0, microsecond=0)
+            self.on_bar(self.bar)
+            new_minute = True
+        if new_minute:
+            self.bar = BarData()
+            self.bar.init_by_tick(tick)
+        else:
+            self.bar.add_tick(tick)
 
         if not self.vline:
             new_vline = True
         elif self.vline.volume > self.vol:
-            print(self.vline)
             self.on_vline(self.vline)
             new_vline = True
 

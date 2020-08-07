@@ -84,9 +84,9 @@ class BarData(BaseData):
     Candlestick bar data of a certain trading period.
     """
 
-    symbol: str
-    exchange: Exchange
-    datetime: datetime
+    symbol: str = 'BTCUSDT'
+    exchange: Exchange = Exchange.HUOBI
+    datetime: datetime = None
 
     interval: Interval = None
     volume: float = 0
@@ -95,10 +95,30 @@ class BarData(BaseData):
     high_price: float = 0
     low_price: float = 0
     close_price: float = 0
+    gateway_name: str = 'HUOBI'
 
     def __post_init__(self):
         """"""
         self.vt_symbol = f"{self.symbol}.{self.exchange.value}"
+
+    def init_by_tick(self, tick: TickData, interval: Interval = Interval.MINUTE):
+        self.symbol = tick.symbol
+        self.exchange = tick.exchange
+        self.datetime = tick.datetime.replace(second=0, microsecond=0)
+        self.interval = interval
+        self.volume = tick.last_volume
+        self.open_price = tick.last_price
+        self.close_price = tick.last_price
+        self.high_price = tick.last_price
+        self.low_price = tick.last_price
+        self.gateway_name = tick.gateway_name
+
+    def add_tick(self, tick: TickData):
+        if self.symbol == tick.symbol and self.exchange == tick.exchange:
+            self.volume = self.volume + tick.last_volume
+            self.close_price = tick.last_price
+            self.high_price = max(self.high_price, tick.last_price)
+            self.low_price = min(self.low_price, tick.last_price)
 
 
 @dataclass
@@ -161,7 +181,12 @@ class VlineData(BaseData):
                 self.close_price = tick.last_price
                 self.high_price = max(self.high_price, tick.last_price)
                 self.low_price = min(self.low_price, tick.last_price)
-                print(self.open_time, self.volume)
+                #print(self.open_time, self.volume)
+
+    def __str__(self):
+        return 'S%s O:%.3f C:%.3f H:%.3f L:%.3f V:%.3f OT:%s CT:%s' % (self.symbol, self.open_price, self.close_price,
+                                                                       self.high_price, self.low_price, self.volume,
+                                                                       self.open_time, self.close_time)
 
 
 @dataclass
