@@ -39,7 +39,8 @@ def test_vline_generator():
             print(vg.vline)
         #print(len(bar_buf))
         #if len(bar_buf) > 0:
-        #    print(bar_buf[-1])
+        print(vg.bar)
+        print()
 
 
 if __name__ == '__main__':

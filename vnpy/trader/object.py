@@ -5,6 +5,7 @@ Basic data structure used for general trading function in VN Trader.
 from dataclasses import dataclass
 from datetime import datetime
 from logging import INFO
+import pandas as pd
 
 from .constant import Direction, Exchange, Interval, Offset, Status, Product, OptionType, OrderType
 import numpy as np
@@ -120,6 +121,12 @@ class BarData(BaseData):
             self.high_price = max(self.high_price, tick.last_price)
             self.low_price = min(self.low_price, tick.last_price)
 
+    def __str__(self):
+        return '%s O:%.3f C:%.3f H:%.3f L:%.3f V:%.3f OT:%s CT:%s' % (self.symbol, self.open_price, self.close_price,
+                                                                      self.high_price, self.low_price, self.volume,
+                                                                      self.datetime,
+                                                                      self.datetime+pd.to_timedelta(self.interval.value))
+
 
 @dataclass
 class VlineData(BaseData):
@@ -184,7 +191,7 @@ class VlineData(BaseData):
                 #print(self.open_time, self.volume)
 
     def __str__(self):
-        return 'S%s O:%.3f C:%.3f H:%.3f L:%.3f V:%.3f OT:%s CT:%s' % (self.symbol, self.open_price, self.close_price,
+        return '%s O:%.3f C:%.3f H:%.3f L:%.3f V:%.3f OT:%s CT:%s' % (self.symbol, self.open_price, self.close_price,
                                                                        self.high_price, self.low_price, self.volume,
                                                                        self.open_time, self.close_time)
 
