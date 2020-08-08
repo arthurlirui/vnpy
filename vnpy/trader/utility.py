@@ -208,28 +208,24 @@ class VlineGenerator:
         if self.last_tick and tick.datetime < self.last_tick.datetime:
             return
 
-        if self.bar.is_empty():
-            new_minute = True
-        elif self.bar.datetime.minute != tick.datetime.minute:
-            self.bar.datetime = self.bar.datetime.replace(second=0, microsecond=0)
-            self.on_bar(self.bar)
-            new_minute = True
-
-        if new_minute:
-            self.bar = BarData()
-            self.bar.init_by_tick(tick)
-        else:
-            self.bar.add_tick(tick)
+        # if self.bar.is_empty():
+        #     new_minute = True
+        # elif self.bar.datetime.minute != tick.datetime.minute:
+        #     self.bar.datetime = self.bar.datetime.replace(second=0, microsecond=0)
+        #     self.on_bar(self.bar)
+        #     new_minute = True
+        #
+        # if new_minute:
+        #     self.bar = BarData()
+        #     self.bar.init_by_tick(tick)
+        # else:
+        #     self.bar.add_tick(tick)
 
         if self.vline.is_empty():
             new_vline = True
         elif self.vline.volume > self.vol:
             self.on_vline(self.vline)
-            #self.on_multi_vline(self.vline, v)
             self.update_vline(vline=self.vline)
-            # self.vline = VlineData(symbol=self.vline.symbol,
-            #                        exchange=self.vline.exchange,
-            #                        gateway_name=self.vline.gateway_name)
             new_vline = True
 
         if new_vline:
@@ -283,10 +279,9 @@ class VlineGenerator:
                 #print(vline)
                 self.vline_buf[v] = self.vline_buf[v] + vline
                 if self.vline_buf[v].volume > v:
-                    print(v, self.vline_buf[v])
+                    #print(v, self.vline_buf[v])
                     self.on_multi_vline(self.vline_buf[v], v)
                     self.vline_buf[v] = VlineData()
-
 
     def update_bar(self, bar: BarData) -> None:
         """
