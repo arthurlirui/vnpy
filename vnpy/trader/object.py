@@ -78,6 +78,9 @@ class TickData(BaseData):
         """"""
         self.vt_symbol = f"{self.symbol}.{self.exchange.value}"
 
+    def __str__(self):
+        return '%s P:%.3f V:%.3f %s %s' % (self.symbol, self.last_price, self.last_volume, self.exchange, self.datetime)
+
 
 @dataclass
 class BarData(BaseData):
@@ -92,10 +95,10 @@ class BarData(BaseData):
     interval: Interval = None
     volume: float = 0
     open_interest: float = 0
-    open_price: float = 0
-    high_price: float = 0
-    low_price: float = 0
-    close_price: float = 0
+    open_price: float = None
+    high_price: float = None
+    low_price: float = None
+    close_price: float = None
     gateway_name: str = 'HUOBI'
 
     def __post_init__(self):
@@ -127,6 +130,17 @@ class BarData(BaseData):
                                                                       self.datetime,
                                                                       self.datetime+pd.to_timedelta(self.interval.value))
 
+    def is_empty(self):
+        if not self.high_price:
+            return True
+        if not self.low_price:
+            return True
+        if not self.open_price:
+            return True
+        if not self.close_price:
+            return True
+        return False
+
 
 @dataclass
 class VlineData(BaseData):
@@ -136,21 +150,24 @@ class VlineData(BaseData):
 
     symbol: str = 'BTCUSDT'
     exchange: Exchange = Exchange.HUOBI
-    open_time: datetime = datetime.today()
-    close_time: datetime = datetime.today()
+    gateway_name: str = None
+
+    open_time: datetime = None
+    close_time: datetime = None
 
     volume: float = 0.0
-    open_price: float = 0
-    high_price: float = 0
-    low_price: float = 0
-    close_price: float = 0
-    gateway_name: str = 'HUOBI'
+    open_price: float = None
+    high_price: float = None
+    low_price: float = None
+    close_price: float = None
 
     def __post_init__(self):
         """"""
         self.vt_symbol = f"{self.symbol}.{self.exchange.value}"
 
     def __add__(self, other):
+        #print(self.__str__())
+        #print(other)
         symbol = self.symbol
         exchange = self.exchange
         open_time = self.open_time
@@ -159,13 +176,13 @@ class VlineData(BaseData):
         volume = self.volume + other.volume
         open_price = self.open_price
         close_price = other.close_price
+        #print(self.high_price, self.low_price, self.open_price, self.close_price)
         high_price = max(self.high_price, other.high_price)
         low_price = min(self.low_price, other.low_price)
-        t = VlineData(symbol=symbol, exchange=exchange, open_time=open_time, close_time=close_time,
-                      gateway_name=self.gateway_name,
-                      volume=volume, open_price=open_price, close_price=close_price,
-                      high_price=high_price, low_price=low_price)
-        return t
+        vd = VlineData(symbol=symbol, exchange=exchange, open_time=open_time, close_time=close_time,
+                       gateway_name=self.gateway_name, volume=volume,
+                       open_price=open_price, close_price=close_price, high_price=high_price, low_price=low_price)
+        return vd
 
     def init_by_tick(self, tick: TickData):
         self.symbol = tick.symbol
@@ -173,7 +190,7 @@ class VlineData(BaseData):
         self.open_time = tick.datetime
         self.close_time = tick.datetime
 
-        self.volume = tick.volume
+        self.volume = tick.last_volume
         self.open_price = tick.last_price
         self.close_price = tick.last_price
         self.high_price = tick.last_price
@@ -182,18 +199,41 @@ class VlineData(BaseData):
 
     def add_tick(self, tick: TickData):
         if self.symbol == tick.symbol and self.exchange == tick.exchange:
-            if self.open_time < tick.datetime and self.close_time < tick.datetime:
+            if self.open_time <= tick.datetime and self.close_time <= tick.datetime:
                 self.close_time = tick.datetime
                 self.volume = self.volume + tick.last_volume
+                if not self.open_price:
+                    self.open_price = tick.open_price
+
                 self.close_price = tick.last_price
-                self.high_price = max(self.high_price, tick.last_price)
-                self.low_price = min(self.low_price, tick.last_price)
-                #print(self.open_time, self.volume)
+
+                if not self.high_price:
+                    self.high_price = tick.last_price
+                else:
+                    self.high_price = max(self.high_price, tick.last_price)
+
+                if not self.low_price:
+                    self.low_price = tick.last_price
+                else:
+                    self.low_price = min(self.low_price, tick.last_price)
 
     def __str__(self):
         return '%s O:%.3f C:%.3f H:%.3f L:%.3f V:%.3f OT:%s CT:%s' % (self.symbol, self.open_price, self.close_price,
-                                                                       self.high_price, self.low_price, self.volume,
-                                                                       self.open_time, self.close_time)
+                                                                      self.high_price, self.low_price, self.volume,
+                                                                      self.open_time, self.close_time)
+
+    def is_empty(self):
+        if self.volume <= 0:
+            return True
+        if not self.open_price:
+            return True
+        if not self.close_price:
+            return True
+        if not self.high_price:
+            return True
+        if not self.low_price:
+            return True
+        return False
 
 
 @dataclass

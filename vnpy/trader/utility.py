@@ -174,11 +174,11 @@ class VlineGenerator:
         interval: Interval = Interval.MINUTE
     ):
         """Constructor"""
-        self.vline: VlineData = None
+        self.vline: VlineData = VlineData()
         self.on_vline: Callable = on_vline
         self.vol: float = vol
 
-        self.bar: BarData = None
+        self.bar: BarData = BarData()
         self.on_bar: Callable = on_bar
 
         #self.total_vol: float = 0
@@ -188,8 +188,8 @@ class VlineGenerator:
         #    self.vline_buf[v] = []
 
         self.last_tick: TickData = None
-        self.last_vline: VlineData = None
-        self.last_bar: BarData = None
+        self.last_vline: VlineData = VlineData()
+        self.last_bar: BarData = BarData()
 
     def update_tick(self, tick: TickData) -> None:
         """
@@ -201,30 +201,39 @@ class VlineGenerator:
         # Filter tick data with 0 last price
         if not tick.last_price:
             return
+        else:
+            self.last_tick = tick
 
         # Filter tick data with older timestamp
         if self.last_tick and tick.datetime < self.last_tick.datetime:
             return
 
-        if not self.bar:
+        if self.bar.is_empty():
             new_minute = True
         elif self.bar.datetime.minute != tick.datetime.minute:
             self.bar.datetime = self.bar.datetime.replace(second=0, microsecond=0)
             self.on_bar(self.bar)
             new_minute = True
+
         if new_minute:
             self.bar = BarData()
             self.bar.init_by_tick(tick)
         else:
             self.bar.add_tick(tick)
 
-        if not self.vline:
+        if self.vline.is_empty():
             new_vline = True
         elif self.vline.volume > self.vol:
             self.on_vline(self.vline)
+            #self.on_multi_vline(self.vline, v)
+            self.update_vline(vline=self.vline)
+            # self.vline = VlineData(symbol=self.vline.symbol,
+            #                        exchange=self.vline.exchange,
+            #                        gateway_name=self.vline.gateway_name)
             new_vline = True
 
         if new_vline:
+            # init empty vline here
             self.vline = VlineData()
             self.vline.init_by_tick(tick)
         else:
@@ -236,48 +245,47 @@ class VlineGenerator:
 
         self.last_tick = tick
 
-    def update_vline(self, tick: TickData) -> None:
+    def multi_vline_setting(self, on_multi_vline, vol_list=[10, 20]):
+        '''
+        setting multiple vlines
+        :return:
+        '''
+        self.vol_list = vol_list
+        self.on_multi_vline = on_multi_vline
+        # multi vline buffer
+        self.vline_buf = {}
+        for v in self.vol_list:
+            self.vline_buf[v] = VlineData()
+
+    def multi_bar_setting(self, on_multi_bar, interval_list=[Interval.MINUTE_5]):
+        '''
+        setting multiple bar
+        '''
+        self.interval_list = interval_list
+        self.on_multi_bar = on_multi_bar
+        for v in self.interval_list:
+            self.bar_buf[v] = BarData()
+
+    def update_vline(self, vline: VlineData) -> None:
         """
-        Update new tick data into generator.
+        Update new vline data into generator.
         """
         # 1. process None last tick and None last vline
         # 2. update last vline for each trade
         # 3. check volume to update other all vline in list
 
-        # 1.1 init last trade
-        if not self.last_tick:
-            self.last_tick = tick
-
-        # 1.2 init last vline
-        if self.last_tick.datetime > tick.datetime:
-            return
-
-        vd = VlineData(symbol=tick.symbol,
-                       exchange=tick.exchange,
-                       open_time=tick.datetime,
-                       close_time=tick.datetime,
-                       volume=tick.volume,
-                       open_price=tick.last_price,
-                       close_price=tick.last_price,
-                       high_price=tick.last_price,
-                       low_price=tick.last_price)
-
-        if not self.last_vline:
-            self.last_vline = vd
-            return
-        else:
-            self.last_vline = self.last_vline + vd
-            if self.last_vline.volume > self.vol:
-                self.on_single_vline(self.last_vline)
-                for v in self.vol_list:
-                    self.vline_buf[v].append(self.last_vline)
-
-        # 2.2 check vline_buf to udpate new vline
+        # check exist of vline
         for v in self.vol_list:
-            if len(self.vline_buf[v]) >= v:
-                self.on_vline(self.vline_buf[v])
-                self.vline_buf[v] = []
-
+            if self.vline_buf[v].is_empty():
+                self.vline_buf[v] = vline
+                #print(v, self.vline_buf[v])
+            else:
+                #print(vline)
+                self.vline_buf[v] = self.vline_buf[v] + vline
+                if self.vline_buf[v].volume > v:
+                    print(v, self.vline_buf[v])
+                    self.on_multi_vline(self.vline_buf[v], v)
+                    self.vline_buf[v] = VlineData()
 
 
     def update_bar(self, bar: BarData) -> None:
