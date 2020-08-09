@@ -8,6 +8,8 @@ from vnpy.app.cta_strategy import (
 )
 
 from time import time
+from vnpy.trader.object import VlineData, BarData
+from vnpy.trader.utility import VlineGenerator
 
 
 class TestStrategy(CtaTemplate):
@@ -35,6 +37,15 @@ class TestStrategy(CtaTemplate):
             self.test_stop_order
         ]
         self.last_tick = None
+        self.last_vline = None
+        self.vg = VlineGenerator(on_vline=self.on_vline)
+
+        vol_list = [10, 20, 40]
+        vline_buf = {}
+        for v in vol_list:
+            vline_buf[v] = []
+        func3 = lambda x, y: vline_buf[y].append(x)
+        self.vg.multi_vline_setting(on_multi_vline=func3, vol_list=vol_list)
 
     def on_init(self):
         """
@@ -58,27 +69,49 @@ class TestStrategy(CtaTemplate):
         """
         Callback of new tick data update.
         """
-        if self.test_all_done:
+        if not tick.last_price:
             return
+        else:
+            self.last_tick = tick
 
-        self.last_tick = tick
+        # update tick here
+        self.vg.update_tick(tick=tick)
 
         self.tick_count += 1
         if self.tick_count >= self.test_trigger:
             self.tick_count = 0
 
-            if self.test_funcs:
-                test_func = self.test_funcs.pop(0)
-
-                start = time()
-                test_func()
-                time_cost = (time() - start) * 1000
-                self.write_log("耗时%s毫秒" % (time_cost))
-            else:
-                self.write_log("测试已全部完成")
-                self.test_all_done = True
+        if self.vg.vline.low_price < 4000:
+            vt_orderid = self.buy(price=self.last_tick.last_price, volume=0.01)
+            print('BUY: P-%.3f V-%.3f' % (self.last_tick.last_price, 0.01))
+        elif self.vg.vline.high_price > 4500:
+            vt_orderid = self.sell(price=self.last_tick.last_price, volume=0.01)
+            print(vt_orderid)
+            print('SELL: P-%.3f V-%.3f' % (self.last_tick.last_price, 0.01))
+        # if self.test_all_done:
+        #     return
+        #
+        # self.last_tick = tick
+        #
+        # self.tick_count += 1
+        # if self.tick_count >= self.test_trigger:
+        #     self.tick_count = 0
+        #
+        #     if self.test_funcs:
+        #         test_func = self.test_funcs.pop(0)
+        #
+        #         start = time()
+        #         test_func()
+        #         time_cost = (time() - start) * 1000
+        #         self.write_log("耗时%s毫秒" % (time_cost))
+        #     else:
+        #         self.write_log("测试已全部完成")
+        #         self.test_all_done = True
 
         self.put_event()
+
+    def on_vline(self, vline: VlineData):
+        pass
 
     def on_bar(self, bar: BarData):
         """

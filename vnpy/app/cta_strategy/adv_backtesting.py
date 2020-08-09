@@ -681,15 +681,17 @@ class AdvBacktestingEngine:
         self.datetime = tick.datetime
 
         self.cross_limit_order()
-        self.cross_stop_order()
+        #self.cross_stop_order()
         self.strategy.on_tick(tick)
 
-        self.update_daily_close(tick.last_price)
+        #self.update_daily_close(tick.last_price)
 
     def cross_limit_order(self):
         """
         Cross limit order with last bar/tick data.
         """
+        if len(self.active_limit_orders) > 0:
+            print(self.active_limit_orders)
         for order in list(self.active_limit_orders.values()):
             # Push order update with status "not traded" (pending).
             if order.status == Status.SUBMITTING:
@@ -721,11 +723,13 @@ class AdvBacktestingEngine:
                 self.strategy.on_order(order)
                 self.active_limit_orders.pop(order.vt_orderid)
                 traded_vol = order.volume
+                print('%d: P-%.3f V-%.3f %d AF' % (order.direction.value, order.price, order.traded, order.orderid))
             elif order.volume >= self.tick.last_volume:
                 order.traded = self.tick.last_volume
                 order.status = Status.PARTTRADED
                 self.strategy.on_order(order)
                 traded_vol = self.tick.last_volume
+                print('%d: P-%.3f V-%.3f %d PF' % (order.direction.value, order.price, order.traded, order.orderid))
 
             # Push trade update
             self.trade_count += 1
