@@ -14,11 +14,11 @@ import seaborn as sns
 from pandas import DataFrame
 from deap import creator, base, tools, algorithms
 
-from vnpy.trader.constant import (Direction, Offset, Exchange,
-                                  Interval, Status)
+from vnpy.trader.constant import (Direction, Offset, Exchange, Interval, Status)
 from vnpy.trader.database import database_manager
 from vnpy.trader.object import OrderData, TradeData, BarData, TickData
 from vnpy.trader.utility import round_to
+from vnpy.app.cta_strategy.backtesting import OptimizationSetting
 
 from .base import (
     BacktestingMode,
@@ -88,6 +88,7 @@ class AdvBacktestingEngine:
         self.eid = 200000
         self.suffix = 'trade'
         self.ndf = None
+        self.gateway_name = 'BINANCE'
 
     def clear_data(self):
         """
@@ -166,50 +167,67 @@ class AdvBacktestingEngine:
         self.output(f"历史数据加载完成，数据量：{len(self.ndf)}")
 
     def run_backtesting(self):
-        """"""
-        if self.mode == BacktestingMode.BAR:
-            func = self.new_bar
-        else:
-            func = self.new_tick
-
+        """
+        1. init strategy
+        2. process each tick
+        3. update market state
+        4. update account state
+        5. execute order
+        :return:
+        """
         self.strategy.on_init()
+        for i, row in self.ndf.iterrows():
+            tick = TickData(symbol=self.symbol, exchange=self.exchange,
+                            last_price=row['price'], last_volume=row['qty'],
+                            datetime=i, gateway_name=self.gateway_name)
+            #print(tick)
+            # print('Tick', tick)
+            #vg.update_tick(tick)
+            self.new_tick(tick)
 
-        # Use the first [days] of history data for initializing strategy
-        day_count = 0
-        ix = 0
-
-        for ix, data in enumerate(self.history_data):
-            if self.datetime and data.datetime.day != self.datetime.day:
-                day_count += 1
-                if day_count >= self.days:
-                    break
-
-            self.datetime = data.datetime
-
-            try:
-                self.callback(data)
-            except Exception:
-                self.output("触发异常，回测终止")
-                self.output(traceback.format_exc())
-                return
-
-        self.strategy.inited = True
-        self.output("策略初始化完成")
-
-        self.strategy.on_start()
-        self.strategy.trading = True
-        self.output("开始回放历史数据")
-
-        # Use the rest of history data for running backtesting
-        for data in self.history_data[ix:]:
-            try:
-                func(data)
-            except Exception:
-                self.output("触发异常，回测终止")
-                self.output(traceback.format_exc())
-                return
-
-        self.output("历史数据回放结束")
+        # if self.mode == BacktestingMode.BAR:
+        #     func = self.new_bar
+        # else:
+        #     func = self.new_tick
+        #
+        # self.strategy.on_init()
+        #
+        # # Use the first [days] of history data for initializing strategy
+        # day_count = 0
+        # ix = 0
+        #
+        # for ix, data in enumerate(self.history_data):
+        #     if self.datetime and data.datetime.day != self.datetime.day:
+        #         day_count += 1
+        #         if day_count >= self.days:
+        #             break
+        #
+        #     self.datetime = data.datetime
+        #
+        #     try:
+        #         self.callback(data)
+        #     except Exception:
+        #         self.output("触发异常，回测终止")
+        #         self.output(traceback.format_exc())
+        #         return
+        #
+        # self.strategy.inited = True
+        # self.output("策略初始化完成")
+        #
+        # self.strategy.on_start()
+        # self.strategy.trading = True
+        # self.output("开始回放历史数据")
+        #
+        # # Use the rest of history data for running backtesting
+        # for data in self.history_data[ix:]:
+        #     try:
+        #         func(data)
+        #     except Exception:
+        #         self.output("触发异常，回测终止")
+        #         self.output(traceback.format_exc())
+        #         return
+        #
+        # self.output("历史数据回放结束")
 
     def calculate_result(self):
         """"""
@@ -653,6 +671,10 @@ class AdvBacktestingEngine:
 
         self.update_daily_close(bar.close_price)
 
+    def update_tick(self, tick: TickData):
+        self.tick = tick
+        self.datetime = tick.datetime
+
     def new_tick(self, tick: TickData):
         """"""
         self.tick = tick
@@ -668,17 +690,6 @@ class AdvBacktestingEngine:
         """
         Cross limit order with last bar/tick data.
         """
-        if self.mode == BacktestingMode.BAR:
-            long_cross_price = self.bar.low_price
-            short_cross_price = self.bar.high_price
-            long_best_price = self.bar.open_price
-            short_best_price = self.bar.open_price
-        else:
-            long_cross_price = self.tick.ask_price_1
-            short_cross_price = self.tick.bid_price_1
-            long_best_price = long_cross_price
-            short_best_price = short_cross_price
-
         for order in list(self.active_limit_orders.values()):
             # Push order update with status "not traded" (pending).
             if order.status == Status.SUBMITTING:
@@ -687,36 +698,44 @@ class AdvBacktestingEngine:
 
             # Check whether limit orders can be filled.
             long_cross = (
-                order.direction == Direction.LONG
-                and order.price >= long_cross_price
-                and long_cross_price > 0
+                    order.direction == Direction.LONG
+                    and order.price >= self.tick.last_price
+                    and self.tick.last_price > 0
             )
 
             short_cross = (
                 order.direction == Direction.SHORT
-                and order.price <= short_cross_price
-                and short_cross_price > 0
+                and order.price <= self.tick.last_price
+                and self.tick.last_price > 0
             )
 
             if not long_cross and not short_cross:
                 continue
 
-            # Push order udpate with status "all traded" (filled).
-            order.traded = order.volume
-            order.status = Status.ALLTRADED
-            self.strategy.on_order(order)
-
-            self.active_limit_orders.pop(order.vt_orderid)
+            # check tick volume to determine partially filled or full filled
+            traded_vol = 0
+            if order.volume < self.tick.last_volume:
+                # Push order udpate with status "all traded" (filled).
+                order.traded = order.volume
+                order.status = Status.ALLTRADED
+                self.strategy.on_order(order)
+                self.active_limit_orders.pop(order.vt_orderid)
+                traded_vol = order.volume
+            elif order.volume >= self.tick.last_volume:
+                order.traded = self.tick.last_volume
+                order.status = Status.PARTTRADED
+                self.strategy.on_order(order)
+                traded_vol = self.tick.last_volume
 
             # Push trade update
             self.trade_count += 1
 
             if long_cross:
-                trade_price = min(order.price, long_best_price)
-                pos_change = order.volume
+                trade_price = min(order.price, self.tick.last_price)
+                pos_change = traded_vol
             else:
-                trade_price = max(order.price, short_best_price)
-                pos_change = -order.volume
+                trade_price = max(order.price, self.tick.last_price)
+                pos_change = -traded_vol
 
             trade = TradeData(
                 symbol=order.symbol,
@@ -726,14 +745,13 @@ class AdvBacktestingEngine:
                 direction=order.direction,
                 offset=order.offset,
                 price=trade_price,
-                volume=order.volume,
+                volume=traded_vol,
                 datetime=self.datetime,
                 gateway_name=self.gateway_name,
             )
 
             self.strategy.pos += pos_change
             self.strategy.on_trade(trade)
-
             self.trades[trade.vt_tradeid] = trade
 
     def cross_stop_order(self):
