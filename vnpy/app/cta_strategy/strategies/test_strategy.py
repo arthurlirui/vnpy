@@ -10,6 +10,7 @@ from vnpy.app.cta_strategy import (
 from time import time
 from vnpy.trader.object import VlineData, BarData
 from vnpy.trader.utility import VlineGenerator
+from vnpy.trader.object import Direction, Offset
 
 
 class TestStrategy(CtaTemplate):
@@ -26,9 +27,7 @@ class TestStrategy(CtaTemplate):
 
     def __init__(self, cta_engine, strategy_name, vt_symbol, setting):
         """"""
-        super(TestStrategy, self).__init__(
-            cta_engine, strategy_name, vt_symbol, setting
-        )
+        super(TestStrategy, self).__init__(cta_engine, strategy_name, vt_symbol, setting)
 
         self.test_funcs = [
             self.test_market_order,
@@ -36,6 +35,7 @@ class TestStrategy(CtaTemplate):
             self.test_cancel_all,
             self.test_stop_order
         ]
+        self.cta_engine = cta_engine
         self.last_tick = None
         self.last_vline = None
         self.vg = VlineGenerator(on_vline=self.on_vline)
@@ -82,32 +82,26 @@ class TestStrategy(CtaTemplate):
             self.tick_count = 0
 
         if self.vg.vline.low_price < 4000:
-            vt_orderid = self.buy(price=self.last_tick.last_price, volume=0.01)
-            print('BUY: P-%.3f V-%.3f' % (self.last_tick.last_price, 0.01))
+            # vt_orderid = self.buy(price=self.last_tick.last_price, volume=0.01)
+            # vt_orderid = self.send_order(direction=Direction.LONG,
+            #                              price=self.last_tick.last_price,
+            #                              volume=0.01,
+            #                              offset=Offset.NONE)
+            self.cta_engine.send_order(direction=Direction.LONG,
+                                       price=self.last_tick.last_price,
+                                       offset=Offset.NONE, volume=0.01, stop=False, lock=False)
+            # print('BUY: P-%.3f V-%.3f' % (self.last_tick.last_price, 0.01))
         elif self.vg.vline.high_price > 4500:
-            vt_orderid = self.sell(price=self.last_tick.last_price, volume=0.01)
-            print(vt_orderid)
-            print('SELL: P-%.3f V-%.3f' % (self.last_tick.last_price, 0.01))
-        # if self.test_all_done:
-        #     return
-        #
-        # self.last_tick = tick
-        #
-        # self.tick_count += 1
-        # if self.tick_count >= self.test_trigger:
-        #     self.tick_count = 0
-        #
-        #     if self.test_funcs:
-        #         test_func = self.test_funcs.pop(0)
-        #
-        #         start = time()
-        #         test_func()
-        #         time_cost = (time() - start) * 1000
-        #         self.write_log("耗时%s毫秒" % (time_cost))
-        #     else:
-        #         self.write_log("测试已全部完成")
-        #         self.test_all_done = True
+            # vt_orderid = self.sell(price=self.last_tick.last_price, volume=0.01)
+            # vt_orderid = self.send_order(direction=Direction.SHORT,
+            #                              price=self.last_tick.last_price,
+            #                              volume=0.01,
+            #                              offset=Offset.NONE)
+            self.cta_engine.send_order(direction=Direction.SHORT,
+                                       price=self.last_tick.last_price,
+                                       offset=Offset.NONE, volume=0.01, stop=False, lock=False)
 
+        #print('SELL: P-%.3f V-%.3f' % (self.last_tick.last_price, 0.01))
         self.put_event()
 
     def on_vline(self, vline: VlineData):
@@ -156,3 +150,25 @@ class TestStrategy(CtaTemplate):
         """"""
         self.cancel_all()
         self.write_log("执行全部撤单测试")
+
+    def send_order(
+        self,
+        direction: Direction,
+        offset: Offset,
+        price: float,
+        volume: float,
+        stop: bool = False,
+        lock: bool = False
+    ):
+        '''
+        if is in real environment then directly submit order to market,
+        '''
+
+        if self.trading:
+            # send order to market
+            vt_orderid = super(TestStrategy, self).send_order(direction=direction, offset=offset,
+                                                              price=price, volume=volume,
+                                                              stop=stop, lock=lock)
+        else:
+            # send order to back testing
+            pass

@@ -85,7 +85,7 @@ class AdvBacktestingEngine:
         self.exchange_name: str = 'Binance'
         self.symbol = 'BTCUSDT'
         self.sid = 100001
-        self.eid = 200000
+        self.eid = 400000
         self.suffix = 'trade'
         self.ndf = None
         self.gateway_name = 'BINANCE'
@@ -173,61 +173,23 @@ class AdvBacktestingEngine:
         3. update market state
         4. update account state
         5. execute order
-        :return:
         """
+        self.trading = True
         self.strategy.on_init()
+        self.strategy.inited = True
+        self.output("策略初始化完成")
+
+        self.strategy.on_start()
+        self.strategy.trading = True
+        self.output("开始回放历史数据")
+
         for i, row in self.ndf.iterrows():
             tick = TickData(symbol=self.symbol, exchange=self.exchange,
                             last_price=row['price'], last_volume=row['qty'],
                             datetime=i, gateway_name=self.gateway_name)
-            #print(tick)
-            # print('Tick', tick)
-            #vg.update_tick(tick)
-            self.new_tick(tick)
+            rec_tick = self.new_tick(tick)
 
-        # if self.mode == BacktestingMode.BAR:
-        #     func = self.new_bar
-        # else:
-        #     func = self.new_tick
-        #
-        # self.strategy.on_init()
-        #
-        # # Use the first [days] of history data for initializing strategy
-        # day_count = 0
-        # ix = 0
-        #
-        # for ix, data in enumerate(self.history_data):
-        #     if self.datetime and data.datetime.day != self.datetime.day:
-        #         day_count += 1
-        #         if day_count >= self.days:
-        #             break
-        #
-        #     self.datetime = data.datetime
-        #
-        #     try:
-        #         self.callback(data)
-        #     except Exception:
-        #         self.output("触发异常，回测终止")
-        #         self.output(traceback.format_exc())
-        #         return
-        #
-        # self.strategy.inited = True
-        # self.output("策略初始化完成")
-        #
-        # self.strategy.on_start()
-        # self.strategy.trading = True
-        # self.output("开始回放历史数据")
-        #
-        # # Use the rest of history data for running backtesting
-        # for data in self.history_data[ix:]:
-        #     try:
-        #         func(data)
-        #     except Exception:
-        #         self.output("触发异常，回测终止")
-        #         self.output(traceback.format_exc())
-        #         return
-        #
-        # self.output("历史数据回放结束")
+        self.output("历史数据回放结束")
 
     def calculate_result(self):
         """"""
@@ -723,13 +685,13 @@ class AdvBacktestingEngine:
                 self.strategy.on_order(order)
                 self.active_limit_orders.pop(order.vt_orderid)
                 traded_vol = order.volume
-                print('%d: P-%.3f V-%.3f %d AF' % (order.direction.value, order.price, order.traded, order.orderid))
+                print('%s: P-%.3f V-%.3f %s AF' % (order.direction.value, order.price, order.traded, order.orderid))
             elif order.volume >= self.tick.last_volume:
                 order.traded = self.tick.last_volume
                 order.status = Status.PARTTRADED
                 self.strategy.on_order(order)
                 traded_vol = self.tick.last_volume
-                print('%d: P-%.3f V-%.3f %d PF' % (order.direction.value, order.price, order.traded, order.orderid))
+                print('%s: P-%.3f V-%.3f %s PF' % (order.direction.value, order.price, order.traded, order.orderid))
 
             # Push trade update
             self.trade_count += 1
@@ -864,7 +826,6 @@ class AdvBacktestingEngine:
 
     def send_order(
         self,
-        strategy: CtaTemplate,
         direction: Direction,
         offset: Offset,
         price: float,
