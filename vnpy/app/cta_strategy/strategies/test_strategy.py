@@ -81,6 +81,9 @@ class TestStrategy(CtaTemplate):
         if self.tick_count >= self.test_trigger:
             self.tick_count = 0
 
+        self.update_market_state()
+        self.update_position_state()
+
         if self.vg.vline.low_price < 4000:
             # vt_orderid = self.buy(price=self.last_tick.last_price, volume=0.01)
             # vt_orderid = self.send_order(direction=Direction.LONG,
@@ -105,7 +108,12 @@ class TestStrategy(CtaTemplate):
         self.put_event()
 
     def on_vline(self, vline: VlineData):
-        pass
+        """
+        Callback of new vline update
+        1. update current position
+        :param vline:
+        :return:
+        """
 
     def on_bar(self, bar: BarData):
         """
@@ -131,6 +139,21 @@ class TestStrategy(CtaTemplate):
         """
         self.put_event()
 
+    def init_market_state(self):
+        pass
+
+    def update_market_state(self):
+        pass
+
+    def init_account_state(self):
+        pass
+
+    def update_account_state(self):
+        pass
+
+    def decision_switch(self):
+        pass
+
     def test_market_order(self):
         """"""
         self.buy(self.last_tick.limit_up, 1)
@@ -151,24 +174,3 @@ class TestStrategy(CtaTemplate):
         self.cancel_all()
         self.write_log("执行全部撤单测试")
 
-    def send_order(
-        self,
-        direction: Direction,
-        offset: Offset,
-        price: float,
-        volume: float,
-        stop: bool = False,
-        lock: bool = False
-    ):
-        '''
-        if is in real environment then directly submit order to market,
-        '''
-
-        if self.trading:
-            # send order to market
-            vt_orderid = super(TestStrategy, self).send_order(direction=direction, offset=offset,
-                                                              price=price, volume=volume,
-                                                              stop=stop, lock=lock)
-        else:
-            # send order to back testing
-            pass
