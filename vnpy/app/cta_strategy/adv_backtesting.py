@@ -7,6 +7,7 @@ from time import time
 import multiprocessing
 import random
 import traceback
+from pprint import pprint
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -16,7 +17,7 @@ from deap import creator, base, tools, algorithms
 
 from vnpy.trader.constant import (Direction, Offset, Exchange, Interval, Status)
 from vnpy.trader.database import database_manager
-from vnpy.trader.object import OrderData, TradeData, BarData, TickData
+from vnpy.trader.object import OrderData, TradeData, BarData, TickData, BalanceData
 from vnpy.trader.utility import round_to
 from vnpy.app.cta_strategy.backtesting import OptimizationSetting
 
@@ -84,6 +85,7 @@ class AdvBacktestingEngine:
         self.filepath: str = '/home/lir0b/data/TradingData/Binance'
         self.exchange_name: str = 'Binance'
         self.symbol = 'BTCUSDT'
+        self.symbol_list = ['BTC', 'USDT']
         self.sid = 100001
         self.eid = 400000
         self.suffix = 'trade'
@@ -166,6 +168,18 @@ class AdvBacktestingEngine:
         self.ndf = ndf
         self.output(f"历史数据加载完成，数据量：{len(self.ndf)}")
 
+    def init_account(self):
+        '''
+        For real market engine, just loading account data
+        For virtual testing, read fix parameters
+        :return:
+        '''
+        sym0 = self.symbol_list[0]
+        sym1 = self.symbol_list[1]
+        bd0 = BalanceData(symbol=sym0, exchange=Exchange.BINANCE, volume=0, price=0, gateway_name='Binance')
+        bd1 = BalanceData(symbol=sym1, exchange=Exchange.BINANCE, volume=10000, price=1, gateway_name='Binance')
+        return {sym0: bd0, sym1: bd1}
+
     def run_backtesting(self):
         """
         1. init strategy
@@ -180,6 +194,8 @@ class AdvBacktestingEngine:
         self.output("策略初始化完成")
 
         self.strategy.on_start()
+        for tt in self.strategy.balance_dict:
+            print(self.strategy.balance_dict[tt])
         self.strategy.trading = True
         self.output("开始回放历史数据")
 
@@ -187,7 +203,7 @@ class AdvBacktestingEngine:
             tick = TickData(symbol=self.symbol, exchange=self.exchange,
                             last_price=row['price'], last_volume=row['qty'],
                             datetime=i, gateway_name=self.gateway_name)
-            rec_tick = self.new_tick(tick)
+            self.new_tick(tick)
 
         self.output("历史数据回放结束")
 
@@ -646,6 +662,9 @@ class AdvBacktestingEngine:
         #self.cross_stop_order()
         self.strategy.on_tick(tick)
 
+        #for tt in self.active_limit_orders:
+        #    print(self.active_limit_orders[tt])
+
         #self.update_daily_close(tick.last_price)
 
     def cross_limit_order(self):
@@ -653,9 +672,11 @@ class AdvBacktestingEngine:
         Cross limit order with last bar/tick data.
         """
         if len(self.active_limit_orders) > 0:
-            print(self.active_limit_orders)
+            print(len(self.active_limit_orders))
+        is_process_tick = False
         for order in list(self.active_limit_orders.values()):
             # Push order update with status "not traded" (pending).
+
             if order.status == Status.SUBMITTING:
                 order.status = Status.NOTTRADED
                 self.strategy.on_order(order)
@@ -665,12 +686,14 @@ class AdvBacktestingEngine:
                     order.direction == Direction.LONG
                     and order.price >= self.tick.last_price
                     and self.tick.last_price > 0
+                    and not is_process_tick
             )
 
             short_cross = (
                 order.direction == Direction.SHORT
                 and order.price <= self.tick.last_price
                 and self.tick.last_price > 0
+                and not is_process_tick
             )
 
             if not long_cross and not short_cross:
@@ -678,21 +701,39 @@ class AdvBacktestingEngine:
 
             # check tick volume to determine partially filled or full filled
             traded_vol = 0
+
             if order.volume < self.tick.last_volume:
                 # Push order udpate with status "all traded" (filled).
                 order.traded = order.volume
                 order.status = Status.ALLTRADED
-                self.strategy.on_order(order)
+                #self.strategy.on_order(order)
                 self.active_limit_orders.pop(order.vt_orderid)
                 traded_vol = order.volume
-                print('%s: P-%.3f V-%.3f %s AF' % (order.direction.value, order.price, order.traded, order.orderid))
+                print('%s: P:%.3f V:%.3f %s AF' % (order.direction.value, order.price, order.traded, order.orderid))
+                is_process_tick = True
+                # b = self.strategy.balance_dict[self.symbol_list[0]]
+                # b.volume += order.traded
+                # s = self.strategy.balance_dict[self.symbol_list[1]]
+                # s.volume -= order.price*order.traded
+                # for ii in self.strategy.balance_dict:
+                #     print(self.strategy.balance_dict[ii])
+
             elif order.volume >= self.tick.last_volume:
                 order.traded = self.tick.last_volume
+                order.volume -= self.tick.last_volume
                 order.status = Status.PARTTRADED
-                self.strategy.on_order(order)
+                #self.strategy.on_order(order)
                 traded_vol = self.tick.last_volume
-                print('%s: P-%.3f V-%.3f %s PF' % (order.direction.value, order.price, order.traded, order.orderid))
+                print('%s: P:%.3f V:%.3f %s PF' % (order.direction.value, order.price, order.traded, order.orderid))
 
+                # b = self.strategy.balance_dict[self.symbol_list[0]]
+                # b.volume -= order.traded
+                #
+                # s = self.strategy.balance_dict[self.symbol_list[1]]
+                # s.volume += order.price * order.traded
+                #
+                # for ii in self.strategy.balance_dict:
+                #     print(self.strategy.balance_dict[ii])
             # Push trade update
             self.trade_count += 1
 
@@ -719,6 +760,19 @@ class AdvBacktestingEngine:
             self.strategy.pos += pos_change
             self.strategy.on_trade(trade)
             self.trades[trade.vt_tradeid] = trade
+
+            # print total value here
+            total_value = 0
+            bd0 = self.strategy.balance_dict[self.symbol_list[0]]
+            bd1 = self.strategy.balance_dict[self.symbol_list[1]]
+            total_value += bd0.volume * self.tick.last_price
+            total_value += bd1.volume
+            print('%s:%.3f %s:%.3f %.3f' % (self.symbol_list[0], bd0.volume,
+                                            self.symbol_list[1], bd1.volume,
+                                            total_value))
+            for ii in self.strategy.balance_dict:
+                print(self.strategy.balance_dict[ii])
+            print()
 
     def cross_stop_order(self):
         """

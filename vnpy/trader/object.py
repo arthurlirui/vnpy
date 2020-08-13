@@ -83,6 +83,46 @@ class TickData(BaseData):
 
 
 @dataclass
+class DistData(BaseData):
+    """
+    Price distribution of single vline
+    """
+    symbol: str = 'BTCUSDT'
+    exchange: Exchange = Exchange.HUOBI
+    gateway_name: str = None
+
+    open_time: datetime = None
+    close_time: datetime = None
+    dist = {}
+
+    def calc_dist(self, ticks: list):
+        t0 = ticks[0]
+        tend = ticks[-1]
+        self.symbol = t0.symbol
+        self.exchange = t0.exchange
+        self.gateway_name = t0.gateway_name
+        self.open_time = t0.datetime
+        self.close_time = tend.datetime
+        dist = {}
+        for t in ticks:
+            key = int(t.last_price)
+            vol = t.last_volume
+            if key in dist:
+                dist[key] += vol
+            else:
+                dist[key] = vol
+        self.dist = dist
+
+    def __str__(self):
+        ss = [str(k) + ' ' + '%.3f' % v + ' ' for k, v in sorted(self.dist.items(), key=lambda x: x[0])]
+        return ''.join(ss)
+
+    def __post_init__(self):
+        """"""
+        self.vt_symbol = f"{self.symbol}.{self.exchange.value}"
+
+
+@dataclass
 class BarData(BaseData):
     """
     Candlestick bar data of a certain trading period.
@@ -303,6 +343,26 @@ class TradeData(BaseData):
         self.vt_symbol = f"{self.symbol}.{self.exchange.value}"
         self.vt_orderid = f"{self.gateway_name}.{self.orderid}"
         self.vt_tradeid = f"{self.gateway_name}.{self.tradeid}"
+
+
+@dataclass
+class BalanceData(BaseData):
+    symbol: str
+    exchange: Exchange
+    volume: float = 0
+    available: float = 0
+    frozen: float = 0
+    price: float = 0
+
+    def __post_init__(self):
+        """"""
+        self.vt_symbol = f"{self.symbol}.{self.exchange.value}"
+        self.available = self.volume
+        self.frozen = self.volume - self.available
+        #self.vt_balanceid = f"{self.vt_symbol}.{self.direction.value}"
+
+    def __str__(self):
+        return '%s %s V:%.3f A:%.3f F:%.3f P:%.3f' % (self.symbol, self.exchange.value, self.volume, self.available, self.frozen, self.price)
 
 
 @dataclass

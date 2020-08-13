@@ -8,9 +8,11 @@ from vnpy.app.cta_strategy import (
 )
 
 from time import time
-from vnpy.trader.object import VlineData, BarData
+from vnpy.trader.object import VlineData, BarData, PositionData
 from vnpy.trader.utility import VlineGenerator
 from vnpy.trader.object import Direction, Offset
+
+import pandas as pd
 
 
 class TestStrategy(CtaTemplate):
@@ -35,10 +37,19 @@ class TestStrategy(CtaTemplate):
             self.test_cancel_all,
             self.test_stop_order
         ]
+        # engine is backtesting or cta_engine
         self.cta_engine = cta_engine
+
         self.last_tick = None
         self.last_vline = None
-        self.vg = VlineGenerator(on_vline=self.on_vline)
+
+        # history data from market
+        self.ticks = []
+        self.vlines = []
+        self.tick_df = None
+        self.vline_df = None
+
+        self.vg = VlineGenerator(on_vline=self.on_vline, vol=10)
 
         vol_list = [10, 20, 40]
         vline_buf = {}
@@ -47,11 +58,22 @@ class TestStrategy(CtaTemplate):
         func3 = lambda x, y: vline_buf[y].append(x)
         self.vg.multi_vline_setting(on_multi_vline=func3, vol_list=vol_list)
 
+        # init position data here
+        self.balance_dict = {}
+        self.first_symbol = 'BTC'
+        self.second_symbol = 'USDT'
+
     def on_init(self):
         """
         Callback when strategy is inited.
         """
         self.write_log("策略初始化")
+        # init account balance here
+        self.on_init_balance()
+
+    def on_init_balance(self):
+        rec_dict = self.cta_engine.init_account()
+        self.balance_dict = rec_dict
 
     def on_start(self):
         """
@@ -81,31 +103,51 @@ class TestStrategy(CtaTemplate):
         if self.tick_count >= self.test_trigger:
             self.tick_count = 0
 
-        self.update_market_state()
-        self.update_position_state()
+        #self.update_market_state()
+        #self.update_position_state()
+        vol = 0.1
 
-        if self.vg.vline.low_price < 4000:
-            # vt_orderid = self.buy(price=self.last_tick.last_price, volume=0.01)
-            # vt_orderid = self.send_order(direction=Direction.LONG,
-            #                              price=self.last_tick.last_price,
-            #                              volume=0.01,
-            #                              offset=Offset.NONE)
-            self.cta_engine.send_order(direction=Direction.LONG,
-                                       price=self.last_tick.last_price,
-                                       offset=Offset.NONE, volume=0.01, stop=False, lock=False)
-            # print('BUY: P-%.3f V-%.3f' % (self.last_tick.last_price, 0.01))
-        elif self.vg.vline.high_price > 4500:
-            # vt_orderid = self.sell(price=self.last_tick.last_price, volume=0.01)
-            # vt_orderid = self.send_order(direction=Direction.SHORT,
-            #                              price=self.last_tick.last_price,
-            #                              volume=0.01,
-            #                              offset=Offset.NONE)
-            self.cta_engine.send_order(direction=Direction.SHORT,
-                                       price=self.last_tick.last_price,
-                                       offset=Offset.NONE, volume=0.01, stop=False, lock=False)
-
-        #print('SELL: P-%.3f V-%.3f' % (self.last_tick.last_price, 0.01))
+        if self.check_long_cond():
+            # check balance
+            buy_value = vol * self.last_tick.last_price
+            if self.balance_dict[self.second_symbol].available >= buy_value:
+                # check position limit
+                self.cta_engine.send_order(direction=Direction.LONG, price=self.last_tick.last_price,
+                                           offset=Offset.NONE, volume=vol, stop=False, lock=False)
+                self.balance_dict[self.second_symbol].available -= buy_value
+                self.balance_dict[self.second_symbol].frozen += buy_value
+                print('Order BUY: P:%.3f V:%.3f' % (self.last_tick.last_price, buy_value))
+                print(self.balance_dict[self.second_symbol])
+                print()
+        elif self.check_short_cond():
+            sell_value = vol
+            if self.balance_dict[self.first_symbol].available >= sell_value:
+                self.cta_engine.send_order(direction=Direction.SHORT, price=self.last_tick.last_price,
+                                           offset=Offset.NONE, volume=vol, stop=False, lock=False)
+                self.balance_dict[self.first_symbol].available -= sell_value
+                self.balance_dict[self.first_symbol].frozen += sell_value
+                print('Order SELL: P:%.3f V:%.3f' % (self.last_tick.last_price, sell_value))
+                print(self.balance_dict[self.first_symbol])
+                print()
         self.put_event()
+
+    def check_long_cond(self):
+        long_cond = False
+        if self.last_tick.last_price < 4500:
+            long_cond = True
+        return long_cond
+
+    def check_short_cond(self):
+        short_cond = False
+        if self.last_tick.last_price > 6000:
+            short_cond = True
+        return short_cond
+
+    def check_balance(self):
+        pass
+
+    def check_target_position(self):
+        pass
 
     def on_vline(self, vline: VlineData):
         """
@@ -131,6 +173,21 @@ class TestStrategy(CtaTemplate):
         """
         Callback of new trade data update.
         """
+        # if in real market: update account info
+        # if in virtual testing: manual update balance
+        if True:
+            if trade.direction == Direction.LONG:
+                self.balance_dict[self.first_symbol].volume += trade.volume
+                self.balance_dict[self.first_symbol].available += trade.volume
+
+                self.balance_dict[self.second_symbol].volume -= trade.volume * trade.price
+                self.balance_dict[self.second_symbol].frozen -= trade.volume * trade.price
+            elif trade.direction == Direction.SHORT:
+                self.balance_dict[self.second_symbol].volume += trade.volume * trade.price
+                self.balance_dict[self.second_symbol].available += trade.volume * trade.price
+
+                self.balance_dict[self.first_symbol].volume -= trade.volume
+                self.balance_dict[self.first_symbol].frozen -= trade.volume
         self.put_event()
 
     def on_stop_order(self, stop_order: StopOrder):
