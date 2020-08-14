@@ -193,7 +193,7 @@ class VlineGenerator:
 
         # buffer for saving ticks in vline
         self.ticks = []
-        self.dist = {}
+        self.dist = DistData()
 
     def update_tick(self, tick: TickData) -> None:
         """
@@ -353,7 +353,7 @@ class VlineGenerator:
         dd = DistData()
         dd.calc_dist(ticks)
         self.dist = dd
-        print(dd)
+        #print(dd)
 
         # dist = {}
         # for t in ticks:
