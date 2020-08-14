@@ -20,7 +20,7 @@ def test_vline_generator():
     ndf = dlu.load_trades_xls(filepath=filepath, exchange=exchange, symbol=symbol, sid=sid, eid=eid, subffix=subffix)
     ndf = dlu.datetime_tick(ndf)
     ndf.head()
-    ndf = ndf[:10000]
+    ndf = ndf[:50000]
 
     gateway_name = 'HUOBI'
 
@@ -29,11 +29,11 @@ def test_vline_generator():
     bar_buf = []
     func2 = lambda x: bar_buf.append(x)
 
-    vline_buf = {10: [], 20: []}
+    vline_buf = {10: [], 20: [], 40: []}
     func3 = lambda x, y: vline_buf[y].append(x)
 
     vg = VlineGenerator(on_vline=func, vol=1, on_bar=func2, interval=Interval.MINUTE)
-    vg.multi_vline_setting(on_multi_vline=func3, vol_list=[10, 20])
+    vg.multi_vline_setting(on_multi_vline=func3, vol_list=[10, 20, 40])
     for i, row in ndf.iterrows():
         #print(row)
         tick = TickData(symbol=symbol, exchange=Exchange.HUOBI,
@@ -47,8 +47,8 @@ def test_vline_generator():
         #    print('Vline', vg.vline)
         #print('Vline', vg.vline)
         for k in vg.vline_buf:
-            if not vg.vline_buf[k]:
-                print('VlineXX', vg.vline_buf[k])
+            if not vg.vline_buf[k].is_empty():
+                print(k, vg.vline_buf[k])
         #print('Vline20', vg.vline_buf[20])
         #print(len(bar_buf))
         #if len(bar_buf) > 0:

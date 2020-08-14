@@ -193,7 +193,11 @@ class VlineGenerator:
 
         # buffer for saving ticks in vline
         self.ticks = []
+
+        # all vline in strategy
+        self.vlines = []
         self.dist = DistData()
+        self.teeter_weight = 0.0
 
     def update_tick(self, tick: TickData) -> None:
         """
@@ -231,8 +235,10 @@ class VlineGenerator:
             self.on_vline(self.vline)
             self.update_vline(vline=self.vline)
             self.update_vline_dist(self.ticks)
+            self.vlines.append(self.vline)
             print(self.vline)
             print(self.dist)
+            print('Teeter Weight:%.3f' % (self.teeter_weight))
             print()
             new_vline = True
 
@@ -352,18 +358,12 @@ class VlineGenerator:
     def update_vline_dist(self, ticks: list):
         dd = DistData()
         dd.calc_dist(ticks)
+        if len(self.vlines) >= 2:
+            w = dd.calc_teeterboard(ticks, self.vlines[-2].avg_price)
+        else:
+            w = dd.calc_teeterboard(ticks, ticks[0].last_price)
         self.dist = dd
-        #print(dd)
-
-        # dist = {}
-        # for t in ticks:
-        #     key = int(t.last_price)
-        #     vol = t.last_volume
-        #     if key in dist:
-        #         dist[key] += vol
-        #     else:
-        #         dist[key] = vol
-        # self.dist = dist
+        self.teeter_weight = w
 
     def generate(self) -> None:
         """

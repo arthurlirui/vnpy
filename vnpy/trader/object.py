@@ -113,6 +113,11 @@ class DistData(BaseData):
                 dist[key] = vol
         self.dist = dist
 
+    def calc_teeterboard(self, ticks, avg_price):
+        func = lambda t, v: ((t.last_price-v)/v)*t.last_volume
+        weight = sum([func(t, avg_price) for t in ticks])
+        return weight
+
     def __str__(self):
         ss = [str(k) + ' ' + '%.3f' % v + ' ' for k, v in sorted(self.dist.items(), key=lambda x: x[0])]
         return ''.join(ss)
@@ -200,6 +205,7 @@ class VlineData(BaseData):
     high_price: float = None
     low_price: float = None
     close_price: float = None
+    avg_price: float = 0
 
     def __post_init__(self):
         """"""
@@ -231,6 +237,7 @@ class VlineData(BaseData):
         self.close_time = tick.datetime
 
         self.volume = tick.last_volume
+        self.avg_price = tick.last_price
         self.open_price = tick.last_price
         self.close_price = tick.last_price
         self.high_price = tick.last_price
@@ -241,7 +248,14 @@ class VlineData(BaseData):
         if self.symbol == tick.symbol and self.exchange == tick.exchange:
             if self.open_time <= tick.datetime and self.close_time <= tick.datetime:
                 self.close_time = tick.datetime
+
+                sum_vol_price = self.avg_price * self.volume
+                sum_vol_price = sum_vol_price + tick.last_price * tick.last_volume
+
                 self.volume = self.volume + tick.last_volume
+
+                self.avg_price = sum_vol_price / self.volume
+
                 if not self.open_price:
                     self.open_price = tick.open_price
 
@@ -258,9 +272,11 @@ class VlineData(BaseData):
                     self.low_price = min(self.low_price, tick.last_price)
 
     def __str__(self):
-        return '%s O:%.3f C:%.3f H:%.3f L:%.3f V:%.3f OT:%s CT:%s' % (self.symbol, self.open_price, self.close_price,
-                                                                      self.high_price, self.low_price, self.volume,
-                                                                      self.open_time, self.close_time)
+        return '%s P:%.3f O:%.3f C:%.3f H:%.3f L:%.3f V:%.3f OT:%s CT:%s' % (self.symbol, self.avg_price,
+                                                                             self.open_price, self.close_price,
+                                                                             self.high_price, self.low_price,
+                                                                             self.volume,
+                                                                             self.open_time, self.close_time)
 
     def is_empty(self):
         if self.volume <= 0:
