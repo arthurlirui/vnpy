@@ -189,15 +189,17 @@ class VlineGenerator:
 
         self.last_tick: TickData = None
         self.last_vline: VlineData = VlineData()
+        self.last_dist = DistData()
+        self.last_teeter_signal = 0.0
         #self.last_bar: BarData = BarData()
 
         # buffer for saving ticks in vline
         self.ticks = []
 
-        # all vline in strategy
+        # all running vline, dist, and teeter_signal
         self.vlines = []
-        self.dist = DistData()
-        self.teeter_weight = 0.0
+        self.dists = []
+        self.teeter_signals = []
 
     def update_tick(self, tick: TickData) -> None:
         """
@@ -233,18 +235,26 @@ class VlineGenerator:
             new_vline = True
         elif self.vline.volume > self.vol:
             self.on_vline(self.vline)
+
             self.update_vline(vline=self.vline)
-            self.update_vline_dist(self.ticks)
+            self.update_vline_dist(ticks=self.ticks)
+
             self.vlines.append(self.vline)
-            print(self.vline)
-            print(self.dist)
-            print('Teeter Weight:%.3f' % (self.teeter_weight))
-            print()
+            self.dists.append(self.last_dist)
+            self.teeter_signals.append(self.last_teeter_signal)
+
+            #print(self.vline)
+            #print(self.dist)
+            #print('Teeter Weight:%.3f' % (self.teeter_weight))
+            #print()
+
             new_vline = True
 
         if new_vline:
             # init empty vline here
             self.vline = VlineData()
+            #self.last_teeter_signal = 0
+            #self.last_dist = DistData()
             self.vline.init_by_tick(tick)
             self.ticks.clear()
         else:
@@ -362,8 +372,8 @@ class VlineGenerator:
             w = dd.calc_teeterboard(ticks, self.vlines[-2].avg_price)
         else:
             w = dd.calc_teeterboard(ticks, ticks[0].last_price)
-        self.dist = dd
-        self.teeter_weight = w
+        self.last_dist = dd
+        self.last_teeter_signal = w
 
     def generate(self) -> None:
         """

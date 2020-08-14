@@ -44,8 +44,9 @@ class TestStrategy(CtaTemplate):
         self.last_vline = None
 
         # history data from market
-        self.ticks = []
+        #self.ticks = []
         self.vlines = []
+
         self.tick_df = None
         self.vline_df = None
 
@@ -106,7 +107,9 @@ class TestStrategy(CtaTemplate):
         #self.update_market_state()
         #self.update_position_state()
         vol = 0.1
-
+        #print(len(self.vg.vlines), len(self.vlines))
+        #print(len(self.vg.ticks), len(self.ticks))
+        print('TS:%.3f LenTS:%d' % (self.vg.last_teeter_signal, len(self.vg.teeter_signals)))
         if self.check_long_cond():
             # check balance
             buy_value = vol * self.last_tick.last_price
@@ -133,8 +136,10 @@ class TestStrategy(CtaTemplate):
 
     def check_long_cond(self):
         long_cond = False
-        if self.last_tick.last_price < 4500:
-            long_cond = True
+        if len(self.vlines) > 10:
+            pass
+        #if self.last_tick.last_price < 4500:
+        #    long_cond = True
         return long_cond
 
     def check_short_cond(self):
@@ -156,6 +161,7 @@ class TestStrategy(CtaTemplate):
         :param vline:
         :return:
         """
+        self.vlines.append(vline)
 
     def on_bar(self, bar: BarData):
         """
