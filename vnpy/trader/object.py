@@ -212,8 +212,6 @@ class VlineData(BaseData):
         self.vt_symbol = f"{self.symbol}.{self.exchange.value}"
 
     def __add__(self, other):
-        #print(self.__str__())
-        #print(other)
         symbol = self.symbol
         exchange = self.exchange
         open_time = self.open_time
@@ -225,8 +223,9 @@ class VlineData(BaseData):
         #print(self.high_price, self.low_price, self.open_price, self.close_price)
         high_price = max(self.high_price, other.high_price)
         low_price = min(self.low_price, other.low_price)
+        avg_price = (self.avg_price * self.volume + other.avg_price * other.volume)/(self.volume+other.volume)
         vd = VlineData(symbol=symbol, exchange=exchange, open_time=open_time, close_time=close_time,
-                       gateway_name=self.gateway_name, volume=volume,
+                       gateway_name=self.gateway_name, volume=volume, avg_price=avg_price,
                        open_price=open_price, close_price=close_price, high_price=high_price, low_price=low_price)
         return vd
 

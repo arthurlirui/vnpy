@@ -13,19 +13,27 @@ from vnpy.trader.utility import VlineGenerator
 from vnpy.trader.object import Direction, Offset
 
 import pandas as pd
+from pprint import pprint
 
 
 class TestStrategy(CtaTemplate):
     """"""
     author = "Arthur"
-
     test_trigger = 10
-
     tick_count = 0
     test_all_done = False
-
     parameters = ["test_trigger"]
     variables = ["tick_count", "test_all_done"]
+
+    default_parameters = {'vline_vol': 5,
+                          'vline_vol_list': [10, 20, 40],
+                          'vline_min_num': 10,
+                          'vline_max_num': 1000,
+                          'first_symbol': 'BTC',
+                          'second_symbol': 'USDT',
+                          'min_trade_vol': 0.005,
+                          'max_trade_vol': 0.1}
+    parameters = default_parameters
 
     def __init__(self, cta_engine, strategy_name, vt_symbol, setting):
         """"""
@@ -37,32 +45,69 @@ class TestStrategy(CtaTemplate):
             self.test_cancel_all,
             self.test_stop_order
         ]
-        # engine is backtesting or cta_engine
+
+        # select backtest engine or real market engine
         self.cta_engine = cta_engine
 
+        # init parameters
+        parameters = setting['parameters']
+        self.init_parameter(parameters=parameters)
+        pprint(self.parameters)
+
+        # vline generator
+        self.vg = None
+        self.vline_buf = {}
+        self.init_vline_generator()
+
+        # system variables
         self.last_tick = None
         self.last_vline = None
 
         # history data from market
-        #self.ticks = []
+        self.ticks = []
         self.vlines = []
 
         self.tick_df = None
         self.vline_df = None
 
-        self.vg = VlineGenerator(on_vline=self.on_vline, vol=10)
-
-        vol_list = [10, 20, 40]
-        vline_buf = {}
-        for v in vol_list:
-            vline_buf[v] = []
-        func3 = lambda x, y: vline_buf[y].append(x)
-        self.vg.multi_vline_setting(on_multi_vline=func3, vol_list=vol_list)
-
-        # init position data here
+        #self.vg = VlineGenerator(on_vline=self.on_vline, vol=10)
+        # init system
         self.balance_dict = {}
-        self.first_symbol = 'BTC'
-        self.second_symbol = 'USDT'
+        self.first_symbol = None
+        self.second_symbol = None
+        self.symbol = None
+
+        # init vline
+        self.vol_list = []
+
+    def init_parameter(self, parameters: dict = {}):
+        for key in parameters:
+            if key in self.parameters:
+                self.parameters[key] = parameters[key]
+
+        for name in self.parameters:
+            setattr(self, name, self.parameters[name])
+
+        # init frequently used parameter for system
+
+        # self.first_symbol = self.parameters['system']['first_symbol']
+        # self.second_symbol = self.parameters['system']['second_symbol']
+        # self.symbol = self.first_symbol+self.second_symbol
+        # init frequently used parameter for vline
+        # self.vol_list = self.parameters['vline']['vline_vol_list']
+
+    def init_vline_generator(self):
+        # init vline
+        self.vg = VlineGenerator(on_vline=self.on_vline, vol=self.vline_vol)
+        self.vg.multi_vline_setting(on_multi_vline=self.on_multi_vline, vol_list=self.vline_vol_list)
+
+        # light copy of vline_buf from vline_generator
+        self.last_vline = self.vg.vline
+        self.vlines = self.vg.vlines
+        self.vline_buf = self.vg.vline_buf
+
+    def print_parameter(self):
+        pass
 
     def on_init(self):
         """
@@ -109,7 +154,7 @@ class TestStrategy(CtaTemplate):
         vol = 0.1
         #print(len(self.vg.vlines), len(self.vlines))
         #print(len(self.vg.ticks), len(self.ticks))
-        print('TS:%.3f LenTS:%d' % (self.vg.last_teeter_signal, len(self.vg.teeter_signals)))
+        #print('TS:%.3f LenTS:%d' % (self.vg.last_teeter_signal, len(self.vg.teeter_signals)))
         if self.check_long_cond():
             # check balance
             buy_value = vol * self.last_tick.last_price
@@ -155,13 +200,13 @@ class TestStrategy(CtaTemplate):
         pass
 
     def on_vline(self, vline: VlineData):
-        """
-        Callback of new vline update
-        1. update current position
-        :param vline:
-        :return:
-        """
-        self.vlines.append(vline)
+        #print(vline)
+        pass
+
+    def on_multi_vline(self, vline: VlineData, vol: int):
+        #print(self.vline_buf[vol])
+        pass
+
 
     def on_bar(self, bar: BarData):
         """

@@ -266,7 +266,7 @@ class VlineGenerator:
         self.last_tick = tick
         self.ticks.append(tick)
 
-    def multi_vline_setting(self, on_multi_vline, vol_list=[10, 20]):
+    def multi_vline_setting(self, on_multi_vline, vol_list=[10, 20, 40]):
         '''
         setting multiple vlines
         :return:

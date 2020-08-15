@@ -153,9 +153,7 @@ class AdvBacktestingEngine:
     def add_strategy(self, strategy_class: type, setting: dict):
         """"""
         self.strategy_class = strategy_class
-        self.strategy = strategy_class(
-            self, strategy_class.__name__, self.vt_symbol, setting
-        )
+        self.strategy = strategy_class(self, strategy_class.__name__, self.vt_symbol, setting)
 
     def load_data(self):
         """"""
