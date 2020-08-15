@@ -16,7 +16,18 @@ engine.set_parameters(
     pricetick=0.2,
     capital=1_000_000,
 )
-engine.add_strategy(TestStrategy, {})
+
+parameters = {'vline_vol': 5,
+              'vline_vol_list': [10, 20, 40],
+              'min_vline_num': 10,
+              'max_vline_num': 1000,
+              'first_symbol': 'BTC',
+              'second_symbol': 'USDT',
+              'min_trade_vol': 0.005,
+              'max_trade_vol': 0.1}
+
+setting = {'parameters': parameters}
+engine.add_strategy(TestStrategy, setting)
 engine.load_data()
 engine.run_backtesting()
 
