@@ -207,7 +207,6 @@ class TestStrategy(CtaTemplate):
         #print(self.vline_buf[vol])
         pass
 
-
     def on_bar(self, bar: BarData):
         """
         Callback of new bar data update.
