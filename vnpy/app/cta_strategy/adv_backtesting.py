@@ -669,8 +669,8 @@ class AdvBacktestingEngine:
         """
         Cross limit order with last bar/tick data.
         """
-        if len(self.active_limit_orders) > 0:
-            print(len(self.active_limit_orders))
+        #if len(self.active_limit_orders) > 0:
+        #    print(len(self.active_limit_orders))
         is_process_tick = False
         for order in list(self.active_limit_orders.values()):
             # Push order update with status "not traded" (pending).

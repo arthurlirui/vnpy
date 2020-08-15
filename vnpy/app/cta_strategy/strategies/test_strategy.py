@@ -14,6 +14,7 @@ from vnpy.trader.object import Direction, Offset
 
 import pandas as pd
 from pprint import pprint
+import numpy as np
 
 
 class TestStrategy(CtaTemplate):
@@ -29,6 +30,7 @@ class TestStrategy(CtaTemplate):
                           'vline_vol_list': [10, 20, 40],
                           'vline_min_num': 10,
                           'vline_max_num': 1000,
+                          'ttb_min_num': 10,
                           'first_symbol': 'BTC',
                           'second_symbol': 'USDT',
                           'min_trade_vol': 0.005,
@@ -67,18 +69,18 @@ class TestStrategy(CtaTemplate):
         self.ticks = []
         self.vlines = []
 
-        self.tick_df = None
-        self.vline_df = None
+        #self.tick_df = None
+        #self.vline_df = None
 
         #self.vg = VlineGenerator(on_vline=self.on_vline, vol=10)
         # init system
-        self.balance_dict = {}
-        self.first_symbol = None
-        self.second_symbol = None
-        self.symbol = None
+        #self.balance_dict = {}
+        #self.first_symbol = None
+        #self.second_symbol = None
+        #self.symbol = None
 
         # init vline
-        self.vol_list = []
+        #self.vol_list = []
 
     def init_parameter(self, parameters: dict = {}):
         for key in parameters:
@@ -87,6 +89,7 @@ class TestStrategy(CtaTemplate):
 
         for name in self.parameters:
             setattr(self, name, self.parameters[name])
+            #print(getattr(self, name))
 
         # init frequently used parameter for system
 
@@ -139,11 +142,15 @@ class TestStrategy(CtaTemplate):
         """
         if not tick.last_price:
             return
-        else:
-            self.last_tick = tick
 
-        # update tick here
+        # update tick
+        self.last_tick = tick
         self.vg.update_tick(tick=tick)
+
+        # update vline
+        self.last_vline = self.vg.vline
+        self.vlines = self.vg.vlines
+        self.vline_buf = self.vg.vline_buf
 
         self.tick_count += 1
         if self.tick_count >= self.test_trigger:
@@ -151,13 +158,26 @@ class TestStrategy(CtaTemplate):
 
         #self.update_market_state()
         #self.update_position_state()
-        vol = 0.1
+        vol = self.min_trade_vol
         #print(len(self.vg.vlines), len(self.vlines))
         #print(len(self.vg.ticks), len(self.ticks))
         #print('TS:%.3f LenTS:%d' % (self.vg.last_teeter_signal, len(self.vg.teeter_signals)))
+        #print(len(self.vg.vlines))
+        #if len(self.vg.vlines) > 0:
+        #    print(len(self.vg.vlines), self.vg.vlines[-1])
+
+        # if len(self.vlines) > 0:
+        #     print(len(self.vlines), self.vlines[-1])
+        #     print()
+        # if True:
+        #     for key in self.vline_buf:
+        #         if not self.vline_buf[key].is_empty():
+        #             print(self.vline_buf[key])
+        #     print()
+
         if self.check_long_cond():
             # check balance
-            buy_value = vol * self.last_tick.last_price
+            buy_value = self.min_trade_vol * self.last_tick.last_price
             if self.balance_dict[self.second_symbol].available >= buy_value:
                 # check position limit
                 self.cta_engine.send_order(direction=Direction.LONG, price=self.last_tick.last_price,
@@ -168,7 +188,7 @@ class TestStrategy(CtaTemplate):
                 print(self.balance_dict[self.second_symbol])
                 print()
         elif self.check_short_cond():
-            sell_value = vol
+            sell_value = self.min_trade_vol
             if self.balance_dict[self.first_symbol].available >= sell_value:
                 self.cta_engine.send_order(direction=Direction.SHORT, price=self.last_tick.last_price,
                                            offset=Offset.NONE, volume=vol, stop=False, lock=False)
@@ -181,16 +201,22 @@ class TestStrategy(CtaTemplate):
 
     def check_long_cond(self):
         long_cond = False
-        if len(self.vlines) > 10:
-            pass
-        #if self.last_tick.last_price < 4500:
-        #    long_cond = True
+        if len(self.vg.teeter_signals) > self.ttb_min_num:
+            tmp = np.array(self.vg.teeter_signals[-self.ttb_min_num:-1])
+            ttb_signal = np.sum(tmp[tmp < 0])
+            if ttb_signal < -0.2:
+                long_cond = True
+            #print(ttb_signal)
         return long_cond
 
     def check_short_cond(self):
         short_cond = False
-        if self.last_tick.last_price > 6000:
-            short_cond = True
+        if len(self.vg.teeter_signals) > self.ttb_min_num:
+            tmp = np.array(self.vg.teeter_signals[-self.ttb_min_num:-1])
+            ttb_signal = np.sum(tmp[tmp > 0])
+            if ttb_signal > 0.2:
+                short_cond = True
+            #print(ttb_signal)
         return short_cond
 
     def check_balance(self):
