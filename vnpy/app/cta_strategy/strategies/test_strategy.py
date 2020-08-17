@@ -34,7 +34,13 @@ class TestStrategy(CtaTemplate):
                           'first_symbol': 'BTC',
                           'second_symbol': 'USDT',
                           'min_trade_vol': 0.005,
-                          'max_trade_vol': 0.1}
+                          'max_trade_vol': 0.1,
+                          'total_position': 10,
+                          'position_step': 0.1,
+                          'min_position': 0.1,
+                          'max_position': 2,
+                          'init_position': 0,
+                          'position_constant_decrease': 0.01}
     parameters = default_parameters
 
     def __init__(self, cta_engine, strategy_name, vt_symbol, setting):
@@ -68,6 +74,7 @@ class TestStrategy(CtaTemplate):
         # history data from market
         self.ticks = []
         self.vlines = []
+        self.vline_len = 0
 
         #self.tick_df = None
         #self.vline_df = None
@@ -119,10 +126,13 @@ class TestStrategy(CtaTemplate):
         self.write_log("策略初始化")
         # init account balance here
         self.on_init_balance()
+        self.on_init_position()
 
     def on_init_balance(self):
-        rec_dict = self.cta_engine.init_account()
-        self.balance_dict = rec_dict
+        self.balance_dict = self.cta_engine.init_account()
+
+    def on_init_position(self):
+        self.position_dict = {self.first_symbol: self.init_position}
 
     def on_start(self):
         """
@@ -148,9 +158,8 @@ class TestStrategy(CtaTemplate):
         self.vg.update_tick(tick=tick)
 
         # update vline
-        self.last_vline = self.vg.vline
-        self.vlines = self.vg.vlines
-        self.vline_buf = self.vg.vline_buf
+        if not self.vline_len == len(self.vg.vlines):
+            self.on_vline()
 
         self.tick_count += 1
         if self.tick_count >= self.test_trigger:
@@ -158,7 +167,7 @@ class TestStrategy(CtaTemplate):
 
         #self.update_market_state()
         #self.update_position_state()
-        vol = self.min_trade_vol
+
         #print(len(self.vg.vlines), len(self.vlines))
         #print(len(self.vg.ticks), len(self.ticks))
         #print('TS:%.3f LenTS:%d' % (self.vg.last_teeter_signal, len(self.vg.teeter_signals)))
@@ -174,29 +183,35 @@ class TestStrategy(CtaTemplate):
         #         if not self.vline_buf[key].is_empty():
         #             print(self.vline_buf[key])
         #     print()
-
+        vol = self.min_trade_vol
+        price = self.last_tick.last_price
         if self.check_long_cond():
             # check balance
-            buy_value = self.min_trade_vol * self.last_tick.last_price
-            if self.balance_dict[self.second_symbol].available >= buy_value:
-                # check position limit
-                self.cta_engine.send_order(direction=Direction.LONG, price=self.last_tick.last_price,
-                                           offset=Offset.NONE, volume=vol, stop=False, lock=False)
-                self.balance_dict[self.second_symbol].available -= buy_value
-                self.balance_dict[self.second_symbol].frozen += buy_value
-                print('Order BUY: P:%.3f V:%.3f' % (self.last_tick.last_price, buy_value))
-                print(self.balance_dict[self.second_symbol])
-                print()
+            if not self.check_balance(Direction.LONG, price, vol):
+                return
+            if not self.check_position(Direction.LONG):
+                return
+            buy_value = price * vol
+            self.cta_engine.send_order(direction=Direction.LONG, price=self.last_tick.last_price,
+                                       offset=Offset.NONE, volume=vol, stop=False, lock=False)
+            self.update_balance(Direction.LONG, price, vol)
+            print('Order BUY: P:%.3f V:%.3f' % (self.last_tick.last_price, buy_value))
+            print(self.balance_dict[self.second_symbol])
+            print('Pos:%.8f' % self.position_dict[self.first_symbol])
+            print()
         elif self.check_short_cond():
-            sell_value = self.min_trade_vol
-            if self.balance_dict[self.first_symbol].available >= sell_value:
-                self.cta_engine.send_order(direction=Direction.SHORT, price=self.last_tick.last_price,
-                                           offset=Offset.NONE, volume=vol, stop=False, lock=False)
-                self.balance_dict[self.first_symbol].available -= sell_value
-                self.balance_dict[self.first_symbol].frozen += sell_value
-                print('Order SELL: P:%.3f V:%.3f' % (self.last_tick.last_price, sell_value))
-                print(self.balance_dict[self.first_symbol])
-                print()
+            if not self.check_balance(Direction.SHORT, price, vol):
+                return
+            if not self.check_position(Direction.SHORT):
+                return
+            sell_value = vol
+            self.cta_engine.send_order(direction=Direction.SHORT, price=self.last_tick.last_price,
+                                       offset=Offset.NONE, volume=vol, stop=False, lock=False)
+            self.update_balance(Direction.SHORT, price, vol)
+            print('Order SELL: P:%.3f V:%.3f' % (self.last_tick.last_price, sell_value))
+            print(self.balance_dict[self.first_symbol])
+            print('Pos:%.8f' % self.position_dict[self.first_symbol])
+            print()
         self.put_event()
 
     def check_long_cond(self):
@@ -206,7 +221,6 @@ class TestStrategy(CtaTemplate):
             ttb_signal = np.sum(tmp[tmp < 0])
             if ttb_signal < -0.2:
                 long_cond = True
-            #print(ttb_signal)
         return long_cond
 
     def check_short_cond(self):
@@ -216,18 +230,70 @@ class TestStrategy(CtaTemplate):
             ttb_signal = np.sum(tmp[tmp > 0])
             if ttb_signal > 0.2:
                 short_cond = True
-            #print(ttb_signal)
         return short_cond
 
-    def check_balance(self):
-        pass
+    def check_balance(self, direction: Direction, price: float = 0, vol: float = 0):
+        is_valid = False
+        if direction == Direction.SHORT:
+            if self.balance_dict[self.first_symbol].available >= vol:
+                is_valid = True
+        elif direction == Direction.LONG:
+            if self.balance_dict[self.second_symbol].available >= vol*price:
+                is_valid = True
+        return is_valid
+
+    def update_balance(self, direction: Direction, price: float, vol: float):
+        if direction == Direction.LONG:
+            self.balance_dict[self.second_symbol].available -= price*vol
+            self.balance_dict[self.second_symbol].frozen += price*vol
+        elif direction == Direction.SHORT:
+            self.balance_dict[self.first_symbol].available -= vol
+            self.balance_dict[self.first_symbol].frozen += vol
+
+    def update_position(self):
+        '''
+        1. receive multiple neg or pos teeter_signal
+        2. avg price change ratio
+        '''
+        cur_avg_price = self.last_vline.avg_price
+        strength = 0
+        phase = 10
+        for p in range(1, phase):
+            if len(self.vlines) > p*10:
+                vline_tmp = self.vlines[-p*10:-1]
+                min_avg_price = min([v.avg_price for v in vline_tmp])
+                if cur_avg_price < min_avg_price:
+                    strength += self.position_step
+        if strength > 0:
+            self.position_dict[self.first_symbol] = strength
+        else:
+            if self.position_dict[self.first_symbol] > 0:
+                self.position_dict[self.first_symbol] -= self.position_constant_decrease
+
+        self.position_dict[self.first_symbol] = min([self.max_position,
+                                                     self.position_dict[self.first_symbol]])
+        self.position_dict[self.first_symbol] = max([self.min_position,
+                                                     self.position_dict[self.first_symbol]])
+
+    def check_position(self, direction: Direction):
+        is_valid = False
+        if direction == Direction.LONG:
+            if self.balance_dict[self.first_symbol].volume < self.position_dict[self.first_symbol]:
+                is_valid = True
+        elif direction == Direction.SHORT:
+            if self.balance_dict[self.first_symbol].volume > self.position_dict[self.first_symbol]:
+                is_valid = True
+        return is_valid
 
     def check_target_position(self):
         pass
 
-    def on_vline(self, vline: VlineData):
-        #print(vline)
-        pass
+    def on_vline(self, vline: VlineData = None):
+        self.last_vline = self.vg.vline
+        self.vlines = self.vg.vlines
+        self.vline_buf = self.vg.vline_buf
+        # update position
+        self.update_position()
 
     def on_multi_vline(self, vline: VlineData, vol: int):
         #print(self.vline_buf[vol])
