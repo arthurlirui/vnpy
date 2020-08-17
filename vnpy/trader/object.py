@@ -118,6 +118,12 @@ class DistData(BaseData):
         weight = sum([func(t, avg_price) for t in ticks])
         return weight
 
+    def total_vol(self):
+        return sum(self.dist.values())
+
+    def less_vol(self, price: float = 0):
+        return sum([self.dist[k] for k in self.dist if price < k])
+
     def __add__(self, other):
         if self.symbol == other.symbol and self.exchange == other.exchange:
             self.open_time = min(self.open_time, other.open_time)
@@ -127,6 +133,7 @@ class DistData(BaseData):
                     self.dist[d] += other.dist[d]
                 else:
                     self.dist[d] = other.dist[d]
+        return self
 
     def __str__(self):
         ss = [str(k) + ' ' + '%.3f' % v + ' ' for k, v in sorted(self.dist.items(), key=lambda x: x[0])]
