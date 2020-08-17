@@ -190,6 +190,7 @@ class VlineGenerator:
         self.last_tick: TickData = None
         self.last_vline: VlineData = VlineData()
         self.last_dist = DistData()
+        self.all_dist = DistData()
         self.last_teeter_signal = 0.0
         #self.last_bar: BarData = BarData()
 
@@ -241,6 +242,7 @@ class VlineGenerator:
 
             self.vlines.append(self.vline)
             self.dists.append(self.last_dist)
+            self.all_dist = self.all_dist + self.last_dist
             self.teeter_signals.append(self.last_teeter_signal)
 
             #print(self.vline)
