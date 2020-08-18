@@ -223,7 +223,9 @@ class VlineData(BaseData):
     low_price: float = None
     close_price: float = None
     avg_price: float = 0
-    ticks = []
+
+    def __init__(self):
+        self.ticks = []
 
     def __post_init__(self):
         """"""
@@ -261,7 +263,6 @@ class VlineData(BaseData):
         self.low_price = tick.last_price
         self.gateway_name = tick.gateway_name
 
-        self.ticks = []
         self.ticks.append(tick)
 
     def add_tick(self, tick: TickData):
