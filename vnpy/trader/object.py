@@ -223,28 +223,29 @@ class VlineData(BaseData):
     low_price: float = None
     close_price: float = None
     avg_price: float = 0
+    ticks = []
 
     def __post_init__(self):
         """"""
         self.vt_symbol = f"{self.symbol}.{self.exchange.value}"
 
     def __add__(self, other):
-        symbol = self.symbol
-        exchange = self.exchange
-        open_time = self.open_time
-        close_time = other.close_time
+        if other.symbol == self.symbol and other.exchange == self.exchange:
+            self.open_time = min([self.open_time, other.open_time])
+            self.close_time = max([self.close_time, other.close_time])
+            self.avg_price = (self.avg_price * self.volume + other.avg_price * other.volume) / (self.volume+other.volume)
 
-        volume = self.volume + other.volume
-        open_price = self.open_price
-        close_price = other.close_price
-        #print(self.high_price, self.low_price, self.open_price, self.close_price)
-        high_price = max(self.high_price, other.high_price)
-        low_price = min(self.low_price, other.low_price)
-        avg_price = (self.avg_price * self.volume + other.avg_price * other.volume)/(self.volume+other.volume)
-        vd = VlineData(symbol=symbol, exchange=exchange, open_time=open_time, close_time=close_time,
-                       gateway_name=self.gateway_name, volume=volume, avg_price=avg_price,
-                       open_price=open_price, close_price=close_price, high_price=high_price, low_price=low_price)
-        return vd
+            self.volume += other.volume
+            if self.open_time < other.open_time and self.close_time < other.close_time:
+                self.open_price = self.open_price
+                self.close_price = other.close_price
+            else:
+                self.open_price = other.open_price
+                self.close_price = self.close_price
+            self.high_price = max(self.high_price, other.high_price)
+            self.low_price = min(self.low_price, other.low_price)
+            self.ticks.extend(other.ticks)
+        return self
 
     def init_by_tick(self, tick: TickData):
         self.symbol = tick.symbol
@@ -287,13 +288,6 @@ class VlineData(BaseData):
                 else:
                     self.low_price = min(self.low_price, tick.last_price)
 
-    def __str__(self):
-        return '%s P:%.3f O:%.3f C:%.3f H:%.3f L:%.3f V:%.3f OT:%s CT:%s' % (self.symbol, self.avg_price,
-                                                                             self.open_price, self.close_price,
-                                                                             self.high_price, self.low_price,
-                                                                             self.volume,
-                                                                             self.open_time, self.close_time)
-
     def is_empty(self):
         if self.volume <= 0:
             return True
@@ -306,6 +300,13 @@ class VlineData(BaseData):
         if not self.low_price:
             return True
         return False
+
+    def __str__(self):
+        return '%s P:%.3f O:%.3f C:%.3f H:%.3f L:%.3f V:%.3f OT:%s CT:%s' % (self.symbol, self.avg_price,
+                                                                             self.open_price, self.close_price,
+                                                                             self.high_price, self.low_price,
+                                                                             self.volume,
+                                                                             self.open_time, self.close_time)
 
 
 @dataclass
@@ -562,3 +563,4 @@ class HistoryRequest:
     def __post_init__(self):
         """"""
         self.vt_symbol = f"{self.symbol}.{self.exchange.value}"
+
