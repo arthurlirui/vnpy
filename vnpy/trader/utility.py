@@ -205,6 +205,9 @@ class VlineGenerator:
     def update_tick(self, tick: TickData) -> None:
         """
         Update new tick data into generator.
+        1. udpate vline
+        2. update dist for each vline
+        3. update long term tick
         """
         new_minute = False
         new_vline = False

@@ -33,12 +33,14 @@ if __name__ == '__main__':
             if vd100.is_empty():
                 vd100 = vd
             else:
-                print(vd100)
                 vd100 = vd100 + vd
+                print(vd100)
+                print(len(vd100.ticks), len(vd.ticks))
             vd = VlineData()
         if vd100.volume > 100:
             print(vd100)
-            for t in vd100.ticks:
-                print(t)
+            dd = DistData()
+            dd.calc_dist(vd100.ticks)
+            print(dd)
             break
     print(vd100)
