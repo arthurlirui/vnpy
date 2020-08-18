@@ -261,6 +261,8 @@ class VlineData(BaseData):
         self.low_price = tick.last_price
         self.gateway_name = tick.gateway_name
 
+        self.ticks.append(tick)
+
     def add_tick(self, tick: TickData):
         if self.symbol == tick.symbol and self.exchange == tick.exchange:
             if self.open_time <= tick.datetime and self.close_time <= tick.datetime:
@@ -287,6 +289,7 @@ class VlineData(BaseData):
                     self.low_price = tick.last_price
                 else:
                     self.low_price = min(self.low_price, tick.last_price)
+                self.ticks.append(tick)
 
     def is_empty(self):
         if self.volume <= 0:

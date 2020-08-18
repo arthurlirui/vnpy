@@ -38,5 +38,7 @@ if __name__ == '__main__':
             vd = VlineData()
         if vd100.volume > 100:
             print(vd100)
+            for t in vd100.ticks:
+                print(t)
             break
     print(vd100)
