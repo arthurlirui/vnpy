@@ -23,7 +23,7 @@ parameters = {'vline_vol': 5,
               'max_vline_num': 1000,
               'first_symbol': 'BTC',
               'second_symbol': 'USDT',
-              'min_trade_vol': 0.005,
+              'min_trade_vol': 0.1,
               'max_trade_vol': 0.1}
 
 setting = {'parameters': parameters}

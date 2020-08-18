@@ -87,7 +87,7 @@ class AdvBacktestingEngine:
         self.symbol = 'BTCUSDT'
         self.symbol_list = ['BTC', 'USDT']
         self.sid = 100001
-        self.eid = 400000
+        self.eid = 2000000
         self.suffix = 'trade'
         self.ndf = None
         self.gateway_name = 'BINANCE'
@@ -197,12 +197,21 @@ class AdvBacktestingEngine:
         self.strategy.trading = True
         self.output("开始回放历史数据")
 
+        c = 0
         for i, row in self.ndf.iterrows():
             tick = TickData(symbol=self.symbol, exchange=self.exchange,
                             last_price=row['price'], last_volume=row['qty'],
                             datetime=i, gateway_name=self.gateway_name)
             self.new_tick(tick)
-
+            c += 1
+            if c % 10000 == 0:
+                vt_orderids = list(self.active_limit_orders.keys())
+                for vt_orderid in vt_orderids:
+                    order_price = self.active_limit_orders[vt_orderid].price
+                    if abs(order_price-tick.last_price) > 10:
+                        self.cancel_limit_order(self.strategy, vt_orderid)
+        print(self.ndf.iloc[0])
+        print(self.ndf.iloc[-1])
         self.output("历史数据回放结束")
 
     def calculate_result(self):
@@ -672,6 +681,7 @@ class AdvBacktestingEngine:
         #if len(self.active_limit_orders) > 0:
         #    print(len(self.active_limit_orders))
         is_process_tick = False
+        is_debug = True
         for order in list(self.active_limit_orders.values()):
             # Push order update with status "not traded" (pending).
 
@@ -707,7 +717,9 @@ class AdvBacktestingEngine:
                 #self.strategy.on_order(order)
                 self.active_limit_orders.pop(order.vt_orderid)
                 traded_vol = order.volume
-                print('%s: P:%.3f V:%.3f %s AF' % (order.direction.value, order.price, order.traded, order.orderid))
+                if is_debug:
+                    print('%s: P:%.3f V:%.3f %s AF %s' % (order.direction.value, order.price, order.traded, order.orderid,
+                                                          self.tick.datetime))
                 is_process_tick = True
                 # b = self.strategy.balance_dict[self.symbol_list[0]]
                 # b.volume += order.traded
@@ -722,7 +734,9 @@ class AdvBacktestingEngine:
                 order.status = Status.PARTTRADED
                 #self.strategy.on_order(order)
                 traded_vol = self.tick.last_volume
-                print('%s: P:%.3f V:%.3f %s PF' % (order.direction.value, order.price, order.traded, order.orderid))
+                if is_debug:
+                    print('%s: P:%.3f V:%.3f %s PF %s' % (order.direction.value, order.price, order.traded, order.orderid,
+                                                          self.tick.datetime))
 
                 # b = self.strategy.balance_dict[self.symbol_list[0]]
                 # b.volume -= order.traded
@@ -765,12 +779,15 @@ class AdvBacktestingEngine:
             bd1 = self.strategy.balance_dict[self.symbol_list[1]]
             total_value += bd0.volume * self.tick.last_price
             total_value += bd1.volume
-            print('%s:%.3f %s:%.3f %.3f' % (self.symbol_list[0], bd0.volume,
-                                            self.symbol_list[1], bd1.volume,
-                                            total_value))
-            for ii in self.strategy.balance_dict:
-                print(self.strategy.balance_dict[ii])
-            print()
+
+            if is_debug:
+                print('%s:%.3f %s:%.3f %.3f' % (self.symbol_list[0], bd0.volume,
+                                                self.symbol_list[1], bd1.volume,
+                                                total_value))
+
+                #for ii in self.strategy.balance_dict:
+                #    print(self.strategy.balance_dict[ii])
+                print()
 
     def cross_stop_order(self):
         """
