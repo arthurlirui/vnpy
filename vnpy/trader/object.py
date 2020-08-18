@@ -261,6 +261,7 @@ class VlineData(BaseData):
         self.low_price = tick.last_price
         self.gateway_name = tick.gateway_name
 
+        self.ticks = []
         self.ticks.append(tick)
 
     def add_tick(self, tick: TickData):

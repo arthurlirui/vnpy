@@ -219,24 +219,12 @@ class VlineGenerator:
         if self.last_tick and tick.datetime < self.last_tick.datetime:
             return
 
-        # if self.bar.is_empty():
-        #     new_minute = True
-        # elif self.bar.datetime.minute != tick.datetime.minute:
-        #     self.bar.datetime = self.bar.datetime.replace(second=0, microsecond=0)
-        #     self.on_bar(self.bar)
-        #     new_minute = True
-        #
-        # if new_minute:
-        #     self.bar = BarData()
-        #     self.bar.init_by_tick(tick)
-        # else:
-        #     self.bar.add_tick(tick)
-
         if self.vline.is_empty():
             new_vline = True
         elif self.vline.volume > self.vol:
             self.on_vline(self.vline)
 
+            # update vline for multiple scale vline
             self.update_vline(vline=self.vline)
             self.update_vline_dist(ticks=self.ticks)
 
@@ -306,66 +294,6 @@ class VlineGenerator:
                 if self.vline_buf[v].volume > v:
                     self.on_multi_vline(self.vline_buf[v], v)
                     self.vline_buf[v] = VlineData()
-
-    # def update_bar(self, bar: BarData) -> None:
-    #     """
-    #     Update 1 minute bar into generator
-    #     """
-    #     # If not inited, creaate window bar object
-    #     if not self.window_bar:
-    #         # Generate timestamp for bar data
-    #         if self.interval == Interval.MINUTE:
-    #             dt = bar.datetime.replace(second=0, microsecond=0)
-    #         else:
-    #             dt = bar.datetime.replace(minute=0, second=0, microsecond=0)
-    #
-    #         self.window_bar = BarData(
-    #             symbol=bar.symbol,
-    #             exchange=bar.exchange,
-    #             datetime=dt,
-    #             gateway_name=bar.gateway_name,
-    #             open_price=bar.open_price,
-    #             high_price=bar.high_price,
-    #             low_price=bar.low_price
-    #         )
-    #     # Otherwise, update high/low price into window bar
-    #     else:
-    #         self.window_bar.high_price = max(
-    #             self.window_bar.high_price, bar.high_price)
-    #         self.window_bar.low_price = min(
-    #             self.window_bar.low_price, bar.low_price)
-    #
-    #     # Update close price/volume into window bar
-    #     self.window_bar.close_price = bar.close_price
-    #     self.window_bar.volume += int(bar.volume)
-    #     self.window_bar.open_interest = bar.open_interest
-    #
-    #     # Check if window bar completed
-    #     finished = False
-    #
-    #     if self.interval == Interval.MINUTE:
-    #         # x-minute bar
-    #         if not (bar.datetime.minute + 1) % self.window:
-    #             finished = True
-    #     elif self.interval == Interval.HOUR:
-    #         if self.last_bar and bar.datetime.hour != self.last_bar.datetime.hour:
-    #             # 1-hour bar
-    #             if self.window == 1:
-    #                 finished = True
-    #             # x-hour bar
-    #             else:
-    #                 self.interval_count += 1
-    #
-    #                 if not self.interval_count % self.window:
-    #                     finished = True
-    #                     self.interval_count = 0
-    #
-    #     if finished:
-    #         self.on_window_bar(self.window_bar)
-    #         self.window_bar = None
-    #
-    #     # Cache last bar object
-    #     self.last_bar = bar
 
     def update_vline_dist(self, ticks: list):
         dd = DistData()
