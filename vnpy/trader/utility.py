@@ -190,8 +190,10 @@ class VlineGenerator:
 
         self.last_tick: TickData = None
         self.last_vline: VlineData = VlineData()
-        self.last_dist = DistData()
-        self.all_dist = DistData()
+        self.last_dist: DistData = DistData()
+        self.dist: DistData = DistData()
+
+        self.all_dist: DistData = DistData()
         self.last_teeter_signal = 0.0
         #self.last_bar: BarData = BarData()
 
@@ -227,38 +229,24 @@ class VlineGenerator:
             self.on_vline(self.vline)
 
             # update vline for multiple vlines
-
             self.update_vline(vline=self.vline)
 
-            #self.update_dist(ticks=self.vline.ticks)
-
-
-            #self.dists.append(self.last_dist)
-            #self.all_dist = self.all_dist + self.last_dist
-            #self.teeter_signals.append(self.last_teeter_signal)
-
-            #print(self.vline)
-            #print(self.dist)
-            #print('Teeter Weight:%.3f' % (self.teeter_weight))
-            #print()
-
+            # update dist
+            self.update_dist(dist=self.dist)
             new_vline = True
 
         if new_vline:
             # init empty vline here
             self.vline = VlineData()
-            #self.last_teeter_signal = 0
-            #self.last_dist = DistData()
             self.vline.init_by_tick(tick)
-            #self.ticks.clear()
+
+            self.dist = DistData()
+            self.dist.calc_dist(self.vline.ticks)
         else:
             self.vline.add_tick(tick)
-
-        #if self.last_tick:
-        #    volume_change = tick.volume - self.last_tick.volume
+            self.dist.add_tick(tick)
 
         self.last_tick = tick
-        #self.ticks.append(tick)
 
     def multi_vline_setting(self, on_multi_vline, vol_list=[10, 20, 40]):
         '''
@@ -267,12 +255,13 @@ class VlineGenerator:
         '''
         self.vol_list = vol_list
         self.on_multi_vline = on_multi_vline
+
         # multi vline buffer
         self.vline_buf = {}
-        #self.dist_buf = {}
+        self.dist_buf = {}
         for v in self.vol_list:
             self.vline_buf[v] = VlineData()
-            #self.dist_buf[v] = DistData()
+            self.dist_buf[v] = DistData()
 
     def update_vline(self, vline: VlineData) -> None:
         """
@@ -290,18 +279,20 @@ class VlineGenerator:
                     self.vline_buf[v].init_by_vline(vline=d)
                 else:
                     self.vline_buf[v] = self.vline_buf[v] + d
-            #print(n, len(self.vline_buf[v].ticks), self.vline_buf[v])
-        #print()
 
-    def update_dist(self, ticks: list):
-        dd = DistData()
-        dd.calc_dist(ticks)
-        if len(self.vlines) >= 2:
-            w = dd.calc_teeterboard(ticks, self.vlines[-2].avg_price)
-        else:
-            w = dd.calc_teeterboard(ticks, ticks[0].last_price)
-        self.last_dist = dd
-        self.last_teeter_signal = w
+    def update_dist(self, dist: DistData):
+        self.dists.append(dist)
+        #print(len(self.dists), self.dists[-1].total_vol())
+        for v in self.vol_list:
+            n = round(v / self.vol)
+            dn = self.dists[-n:]
+            for i, d in enumerate(dn):
+                if i == 0:
+                    self.dist_buf[v].init_by_dist(d)
+                else:
+                    self.dist_buf[v] = self.dist_buf[v] + d
+            #print(v, self.dist_buf[v].total_vol())
+        #print()
 
     def generate(self) -> None:
         """

@@ -82,18 +82,39 @@ class TickData(BaseData):
         return '%s P:%.3f V:%.3f %s %s' % (self.symbol, self.last_price, self.last_volume, self.exchange, self.datetime)
 
 
-@dataclass
 class DistData(BaseData):
     """
     Price distribution of single vline
     """
-    symbol: str = 'BTCUSDT'
-    exchange: Exchange = Exchange.HUOBI
-    gateway_name: str = None
+    def __init__(self,
+                 symbol: str = 'BTCUSDT',
+                 exchange: Exchange = Exchange.HUOBI,
+                 gateway_name: str = None,
+                 open_time: datetime = None,
+                 close_time: datetime = None):
+        self.symbol = symbol
+        self.exchange = exchange
+        self.gateway_name = gateway_name
+        self.open_time = open_time
+        self.close_time = close_time
+        self.dist = {}
 
-    open_time: datetime = None
-    close_time: datetime = None
-    dist = {}
+    def add_tick(self, tick: TickData):
+        if self.symbol == tick.symbol and self.exchange == tick.exchange:
+            key = int(tick.last_price)
+            vol = tick.last_volume
+            if key in self.dist:
+                self.dist[key] += vol
+            else:
+                self.dist[key] = vol
+
+    def init_by_dist(self, dist):
+        self.symbol = dist.symbol
+        self.exchange = dist.exchange
+        self.gateway_name = dist.gateway_name
+        self.open_time = dist.open_time
+        self.close_time = dist.close_time
+        self.dist = dist.dist.copy()
 
     def calc_dist(self, ticks: list):
         t0 = ticks[0]
@@ -224,6 +245,9 @@ class VlineData(BaseData):
     close_price: float = None
     avg_price: float = 0
     ticks = []
+
+    def __init__(self):
+        self.ticks = []
 
     def __post_init__(self):
         """"""
