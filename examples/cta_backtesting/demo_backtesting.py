@@ -17,6 +17,16 @@ engine.set_parameters(
     capital=1_000_000,
 )
 
+# self.filepath: str = '/home/lir0b/data/TradingData/Binance'
+# self.exchange_name: str = 'Binance'
+# self.symbol = 'BTCUSDT'
+# self.symbol_list = ['BTC', 'USDT']
+# self.sid = 100001
+# self.eid = 2000000
+# self.suffix = 'trade'
+# self.ndf = None
+# self.gateway_name = 'BINANCE'
+
 parameters = {'vline_vol': 5,
               'vline_vol_list': [10, 20, 40],
               'min_vline_num': 10,
