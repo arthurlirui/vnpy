@@ -41,6 +41,6 @@ if __name__ == '__main__':
             print(vd100)
             dd = DistData()
             dd.calc_dist(vd100.ticks)
-            print(dd)
+            print(dd.total_vol())
             break
     print(vd100)
