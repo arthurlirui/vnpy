@@ -160,6 +160,18 @@ def get_digits(value: float) -> int:
         return len(buf)
 
 
+class DistGenerator:
+    '''
+    For
+    1. generate and update dist by tick data
+    '''
+    def __init__(self, on_dist: Callable, vol: float = 1.0):
+        pass
+
+    def update_tick(self, tick: TickData):
+        pass
+
+
 class VlineGenerator:
     '''
     For
@@ -170,22 +182,11 @@ class VlineGenerator:
         self,
         on_vline: Callable,
         vol: float = 1.0,
-        #on_bar: Callable = None,
-        #interval: Interval = Interval.MINUTE
     ):
         """Constructor"""
         self.vline: VlineData = VlineData()
         self.on_vline: Callable = on_vline
         self.vol: float = vol
-
-        #self.bar: BarData = BarData()
-        #self.on_bar: Callable = on_bar
-
-        #self.total_vol: float = 0
-        #self.vol_list: list = vol_list
-        #self.vline_buf = {}
-        #for v in self.vol_list:
-        #    self.vline_buf[v] = []
 
         self.last_tick: TickData = None
         self.last_vline: VlineData = VlineData()
@@ -209,14 +210,12 @@ class VlineGenerator:
         2. update dist for each vline
         3. update long term tick
         """
-        new_minute = False
+        #new_minute = False
         new_vline = False
 
         # Filter tick data with 0 last price
         if not tick.last_price:
             return
-        else:
-            self.last_tick = tick
 
         # Filter tick data with older timestamp
         if self.last_tick and tick.datetime < self.last_tick.datetime:
@@ -227,14 +226,16 @@ class VlineGenerator:
         elif self.vline.volume > self.vol:
             self.on_vline(self.vline)
 
-            # update vline for multiple scale vline
-            self.update_vline(vline=self.vline)
-            self.update_vline_dist(ticks=self.ticks)
+            # update vline for multiple vlines
 
-            self.vlines.append(self.vline)
-            self.dists.append(self.last_dist)
-            self.all_dist = self.all_dist + self.last_dist
-            self.teeter_signals.append(self.last_teeter_signal)
+            self.update_vline(vline=self.vline)
+
+            #self.update_dist(ticks=self.vline.ticks)
+
+
+            #self.dists.append(self.last_dist)
+            #self.all_dist = self.all_dist + self.last_dist
+            #self.teeter_signals.append(self.last_teeter_signal)
 
             #print(self.vline)
             #print(self.dist)
@@ -249,15 +250,15 @@ class VlineGenerator:
             #self.last_teeter_signal = 0
             #self.last_dist = DistData()
             self.vline.init_by_tick(tick)
-            self.ticks.clear()
+            #self.ticks.clear()
         else:
             self.vline.add_tick(tick)
 
-        if self.last_tick:
-            volume_change = tick.volume - self.last_tick.volume
+        #if self.last_tick:
+        #    volume_change = tick.volume - self.last_tick.volume
 
         self.last_tick = tick
-        self.ticks.append(tick)
+        #self.ticks.append(tick)
 
     def multi_vline_setting(self, on_multi_vline, vol_list=[10, 20, 40]):
         '''
@@ -268,17 +269,10 @@ class VlineGenerator:
         self.on_multi_vline = on_multi_vline
         # multi vline buffer
         self.vline_buf = {}
+        #self.dist_buf = {}
         for v in self.vol_list:
             self.vline_buf[v] = VlineData()
-
-    # def multi_bar_setting(self, on_multi_bar, interval_list=[Interval.MINUTE_5]):
-    #     '''
-    #     setting multiple bar
-    #     '''
-    #     self.interval_list = interval_list
-    #     self.on_multi_bar = on_multi_bar
-    #     for v in self.interval_list:
-    #         self.bar_buf[v] = BarData()
+            #self.dist_buf[v] = DistData()
 
     def update_vline(self, vline: VlineData) -> None:
         """
@@ -287,18 +281,19 @@ class VlineGenerator:
         # 1. process None last tick and None last vline
         # 2. update last vline for each trade
         # 3. check volume to update other all vline in list
-
-        # check exist of vline
+        self.vlines.append(vline)
         for v in self.vol_list:
-            if self.vline_buf[v].is_empty():
-                self.vline_buf[v] = vline
-            else:
-                self.vline_buf[v] = self.vline_buf[v] + vline
-                if self.vline_buf[v].volume > v:
-                    self.on_multi_vline(self.vline_buf[v], v)
-                    self.vline_buf[v] = VlineData()
+            n = round(v / self.vol)
+            vn = self.vlines[-n:]
+            for i, d in enumerate(vn):
+                if i == 0:
+                    self.vline_buf[v].init_by_vline(vline=d)
+                else:
+                    self.vline_buf[v] = self.vline_buf[v] + d
+            #print(n, len(self.vline_buf[v].ticks), self.vline_buf[v])
+        #print()
 
-    def update_vline_dist(self, ticks: list):
+    def update_dist(self, ticks: list):
         dd = DistData()
         dd.calc_dist(ticks)
         if len(self.vlines) >= 2:

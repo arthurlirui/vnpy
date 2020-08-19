@@ -204,7 +204,7 @@ class BarData(BaseData):
         return False
 
 
-@dataclass
+@dataclass(init=True)
 class VlineData(BaseData):
     """
     Candlestick vline data of a certain trading volume.
@@ -223,9 +223,7 @@ class VlineData(BaseData):
     low_price: float = None
     close_price: float = None
     avg_price: float = 0
-
-    def __init__(self):
-        self.ticks = []
+    ticks = []
 
     def __post_init__(self):
         """"""
@@ -264,6 +262,22 @@ class VlineData(BaseData):
         self.gateway_name = tick.gateway_name
 
         self.ticks.append(tick)
+
+    def init_by_vline(self, vline):
+        self.symbol = vline.symbol
+        self.exchange = vline.exchange
+        self.open_time = vline.open_time
+        self.close_time = vline.open_time
+
+        self.volume = vline.volume
+        self.avg_price = vline.avg_price
+        self.open_price = vline.open_price
+        self.close_price = vline.close_price
+        self.high_price = vline.high_price
+        self.low_price = vline.low_price
+        self.gateway_name = vline.gateway_name
+
+        self.ticks = vline.ticks.copy()
 
     def add_tick(self, tick: TickData):
         if self.symbol == tick.symbol and self.exchange == tick.exchange:
