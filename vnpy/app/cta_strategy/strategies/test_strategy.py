@@ -15,6 +15,7 @@ from vnpy.trader.object import Direction, Offset
 import pandas as pd
 from pprint import pprint
 import numpy as np
+from datetime import date, datetime, timedelta
 
 
 class TestStrategy(CtaTemplate):
@@ -27,7 +28,7 @@ class TestStrategy(CtaTemplate):
     variables = ["tick_count", "test_all_done"]
 
     default_parameters = {'vline_vol': 5,
-                          'vline_vol_list': [10, 20, 40],
+                          'vline_vol_list': [10, 20, 40, 80, 160, 320],
                           'vline_min_num': 10,
                           'vline_max_num': 1000,
                           'ttb_min_num': 10,
@@ -156,58 +157,143 @@ class TestStrategy(CtaTemplate):
         # update tick
         self.last_tick = tick
         self.vg.update_tick(tick=tick)
+        for v in self.vg.vline_buf:
+            if self.vg.vline_buf[v].volume < 0.9*v:
+                return
 
         # update vline
         if not self.vline_len == len(self.vg.vlines):
             self.on_vline()
-            params = self.generate_trade_parameter()
+            #params = self.generate_trade_parameter()
+            self.vline_len = len(self.vg.vlines)
 
-        self.tick_count += 1
-        if self.tick_count >= self.test_trigger:
-            self.tick_count = 0
+        # self.tick_count += 1
+        # if self.tick_count >= self.test_trigger:
+        #     self.tick_count = 0
 
         vol = self.min_trade_vol
         price = self.last_tick.last_price
-        if self.check_long_cond():
-            # check balance
-            if not self.check_balance(Direction.LONG, price, vol):
-                return
-            if not self.check_position(Direction.LONG):
-                return
-            #buy_value = price * vol
-            vol = params[Direction.LONG]['vol']
-            price = params[Direction.LONG]['price']
-            self.cta_engine.send_order(direction=Direction.LONG, price=price,
-                                       offset=Offset.NONE, volume=vol, stop=False, lock=False)
 
-            print('Order BUY: P:%.3f V:%.3f Pos:%.3f N:%d' % (self.last_tick.last_price, vol,
-                                                              self.position_dict[self.first_symbol],
-                                                              len(self.cta_engine.active_limit_orders)))
-            self.update_balance(Direction.LONG, price, vol)
-            #print('Pos:%.8f' % self.position_dict[self.first_symbol],
-            #      'OrderN:', len(self.cta_engine.active_limit_orders))
-            print()
-        elif self.check_short_cond():
-            if not self.check_balance(Direction.SHORT, price, vol):
-                return
-            if not self.check_position(Direction.SHORT):
-                return
-            vol = params[Direction.SHORT]['vol']
-            price = params[Direction.SHORT]['price']
-            self.cta_engine.send_order(direction=Direction.SHORT, price=price,
-                                       offset=Offset.NONE, volume=vol, stop=False, lock=False)
+        # detect breaking
 
-            print('Order SELL: P:%.3f V:%.3f Pos:%.3f N:%d' % (self.last_tick.last_price, vol,
-                                                               self.position_dict[self.first_symbol],
-                                                               len(self.cta_engine.active_limit_orders)))
-            self.update_balance(Direction.SHORT, price, vol)
-            #print('Pos:%.8f' % self.position_dict[self.first_symbol],
-            #      'OrderN:', len(self.cta_engine.active_limit_orders))
-            print()
+        # give trading parameters
+        params = self.generate_trade_parameter()
+        direction, price, vol = params['direction'], params['price'], params['vol']
+        if not direction:
+            return
+
+        # avoid place order frequently
+        place_new_order = self.check_order()
+        if not place_new_order:
+            return
+
+        # if has enough balance
+        if not self.check_balance(direction=direction, price=price, vol=vol):
+            return
+
+        # if enough position
+        if not self.check_position(direction=direction):
+            return
+
+        # everything is ready send order to engine
+        self.cta_engine.send_order(direction=direction, price=price, offset=Offset.NONE, volume=vol, stop=False, lock=False)
+
+        print('Order %s: P:%.3f V:%.3f Pos:%.3f N:%d' % (direction,
+                                                         self.last_tick.last_price,
+                                                         vol,
+                                                         self.position_dict[self.first_symbol],
+                                                         len(self.cta_engine.active_limit_orders)))
+        print(self.last_vline)
+        for v in self.vg.vline_buf:
+            print(self.vg.vline_buf[v])
+        pprint(params)
+        self.update_balance(direction=direction, price=price, vol=vol)
+        # print('Pos:%.8f' % self.position_dict[self.first_symbol],
+        #      'OrderN:', len(self.cta_engine.active_limit_orders))
+
+        print()
+
+        # if direction == Direction.LONG:
+        #
+        #     # buy_value = price * vol
+        #     #vol = params[Direction.LONG]['vol']
+        #     #price = params[Direction.LONG]['price']
+        #
+        #     self.cta_engine.send_order(direction=Direction.LONG, price=price,
+        #                                offset=Offset.NONE, volume=vol, stop=False, lock=False)
+        #
+        #     print(self.last_vline)
+        #     print(self.vg.vline_buf[640])
+        #     print('Order BUY: P:%.3f V:%.3f Pos:%.3f N:%d' % (self.last_tick.last_price+10, vol,
+        #                                                       self.position_dict[self.first_symbol],
+        #                                                       len(self.cta_engine.active_limit_orders)))
+        #     self.update_balance(Direction.LONG, price, vol)
+        #     # print('Pos:%.8f' % self.position_dict[self.first_symbol],
+        #     #      'OrderN:', len(self.cta_engine.active_limit_orders))
+        #     print()
+        #
+        # if direction == Direction.SHORT:
+        #     if not self.check_balance(Direction.SHORT, price, vol):
+        #         return
+        #     if not self.check_position(Direction.SHORT):
+        #         return
+        #     #vol = params[Direction.SHORT]['vol']
+        #     #price = params[Direction.SHORT]['price']
+        #
+        #     self.cta_engine.send_order(direction=Direction.SHORT, price=price,
+        #                                offset=Offset.NONE, volume=vol, stop=False, lock=False)
+        #
+        #     print(self.last_vline)
+        #     print(self.vg.vline_buf[640])
+        #     print('Order SELL: P:%.3f V:%.3f Pos:%.3f N:%d' % (self.last_tick.last_price-10, vol,
+        #                                                        self.position_dict[self.first_symbol],
+        #                                                        len(self.cta_engine.active_limit_orders)))
+        #     self.update_balance(Direction.SHORT, price, vol)
+        #     # print('Pos:%.8f' % self.position_dict[self.first_symbol],
+        #     #      'OrderN:', len(self.cta_engine.active_limit_orders))
+        #     print()
+
         self.put_event()
+
+    def check_trade_cond(self):
+        '''
+        1. check price dist
+        2. check short term teeterboard feature
+        '''
+        direction = None
+        last_price = self.last_tick.last_price
+        buy_rank = 0
+        sell_rank = 0
+
+        # main parameters
+        weights = [0.1, 0.1, 0.2, 0.2, 0.3, 0.3, 0.4, 0.4]
+        low_price_thresh = 0.05
+        high_price_thresh = 0.95
+        ratio_thresh = 0.1
+
+        for i, v in enumerate(self.vg.dist_buf):
+            less_vol = self.vg.dist_buf[v].less_vol(price=last_price)
+            total_vol = self.vg.dist_buf[v].total_vol()
+            if total_vol > 5:
+                ratio = less_vol / total_vol
+                if ratio > high_price_thresh:
+                    sell_rank += weights[i]
+                if ratio < low_price_thresh:
+                    buy_rank += weights[i]
+
+        if sell_rank > ratio_thresh and sell_rank > buy_rank:
+            direction = Direction.SHORT
+        if buy_rank > ratio_thresh and buy_rank > sell_rank:
+            direction = Direction.LONG
+        # if sell_rank > ratio_thresh:
+        #     direction = Direction.SHORT
+        # if buy_rank > ratio_thresh:
+        #     direction = Direction.LONG
+        return direction
 
     def check_long_cond(self):
         long_cond = False
+        # check price dist
         #if len(self.vg.teeter_signals) > self.ttb_min_num:
         tmp = np.array(self.vg.teeter_signals[-self.ttb_min_num:])
         ttb_strength = np.sum(tmp[tmp < 0])
@@ -243,49 +329,101 @@ class TestStrategy(CtaTemplate):
         elif direction == Direction.SHORT:
             self.balance_dict[self.first_symbol].available -= vol
             self.balance_dict[self.first_symbol].frozen += vol
-        print(self.balance_dict[self.first_symbol])
-        print(self.balance_dict[self.second_symbol])
+        #print(self.balance_dict[self.first_symbol])
+        #print(self.balance_dict[self.second_symbol])
 
     def update_position(self):
         '''
-        1. receive multiple neg or pos teeter_signal
-        2. avg price change ratio
+        1. teeterboard feature: receive multiple neg or pos teeter_signal
+        2. price distribution:
         '''
-        cur_avg_price = self.last_vline.avg_price
-        strength = 0
-        phase = 10
-        for p in range(1, phase):
-            if len(self.vlines) > p*10:
-                vline_tmp = self.vlines[-p*10:-1]
-                min_avg_price = min([v.avg_price for v in vline_tmp])
-                if cur_avg_price < min_avg_price:
-                    strength += self.position_step
-        if strength > 0:
-            self.position_dict[self.first_symbol] = strength
+        #last_price = self.last_tick.last_price
+        #buy_rank = 0
+        #sell_rank = 0
+
+        low_price_thresh = 0.1
+        #high_price_thresh = 0.9
+        #ratio_thresh = 0.05
+
+        # main parameters
+        pos_weights = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 1]
+        price = self.last_vline.avg_price
+        max_pos = self.max_position
+        pos = 0
+        for i, v in enumerate(self.vg.dist_buf):
+            less_vol = self.vg.dist_buf[v].less_vol(price=price)
+            total_vol = self.vg.dist_buf[v].total_vol()
+            if total_vol > 0:
+                ratio = less_vol / total_vol
+                if ratio < low_price_thresh and total_vol >= 10:
+                    pos = pos_weights[i]
+
+        if pos > 0:
+            self.position_dict[self.first_symbol] = pos * max_pos
         else:
             if self.position_dict[self.first_symbol] > 0:
                 self.position_dict[self.first_symbol] -= self.position_constant_decrease
 
-        self.position_dict[self.first_symbol] = min([self.max_position,
-                                                     self.position_dict[self.first_symbol]])
-        self.position_dict[self.first_symbol] = max([self.min_position,
-                                                     self.position_dict[self.first_symbol]])
+        # position limit
+        self.position_dict[self.first_symbol] = min([self.max_position, self.position_dict[self.first_symbol]])
+        self.position_dict[self.first_symbol] = max([self.min_position, self.position_dict[self.first_symbol]])
 
-    def generate_trade_parameter(self):
-        vol = self.min_trade_vol
+    def check_order(self, price_thresh=20, time_thresh=timedelta(minutes=3)):
         price = self.last_tick.last_price
+        datetime = self.last_tick.datetime
+        place_new_order = True
+        count = 0
+        for id in self.cta_engine.active_limit_orders:
+            order = self.cta_engine.active_limit_orders[id]
+            if order.symbol == self.last_tick.symbol and order.exchange == self.last_tick.exchange:
+                if abs(order.price-price) < price_thresh:
+                    place_new_order = False
+                    break
+                if datetime - order.datetime < time_thresh:
+                    place_new_order = False
+        return place_new_order
 
-        totalsum = self.vg.all_dist.total_vol()
-        lesssum = self.vg.all_dist.less_vol(price)
 
-        params = {Direction.LONG: {'price': price, 'vol': vol},
-                  Direction.SHORT: {'price': price, 'vol': vol}}
-        if lesssum < 0.5*totalsum:
-            params[Direction.LONG]['price'] = price
-            params[Direction.LONG]['vol'] = (1-lesssum/totalsum) * 10 * vol
-        elif lesssum > 0.5*totalsum:
-            params[Direction.SHORT]['price'] = price
-            params[Direction.SHORT]['vol'] = lesssum / totalsum * 10 * vol
+
+    def update_position_by_dist(self):
+        pass
+
+    def update_position_by_ttb(self):
+        pass
+
+    def clean_order(self):
+        pass
+
+    def generate_trade_parameter(self, setting={}):
+        last_price = self.last_tick.last_price
+        params = {'direction': None, 'price': None, 'vol': None}
+        default_setting = {'high_price_thresh': 0.95, 'low_price_thresh': 0.05}
+        high_price_thresh = default_setting['high_price_thresh']
+        low_price_thresh = default_setting['low_price_thresh']
+
+        direction = None
+        vol = 0
+        price = None
+        vol_step = self.min_trade_vol
+
+        for i, v in enumerate(self.vg.dist_buf):
+            less_vol = self.vg.dist_buf[v].less_vol(price=last_price)
+            total_vol = self.vg.dist_buf[v].total_vol()
+            if total_vol > v*0.9:
+                ratio = less_vol / total_vol
+                if ratio > high_price_thresh:
+                    direction = Direction.SHORT
+                    vol += vol_step
+                    price = last_price
+
+                if ratio < low_price_thresh:
+                    direction = Direction.LONG
+                    vol += vol_step
+                    price = last_price
+
+        params['direction'] = direction
+        params['price'] = price
+        params['vol'] = vol
         return params
 
     def check_position(self, direction: Direction):
@@ -302,6 +440,7 @@ class TestStrategy(CtaTemplate):
         self.last_vline = self.vg.vline
         self.vlines = self.vg.vlines
         self.vline_buf = self.vg.vline_buf
+
         # update position
         self.update_position()
 

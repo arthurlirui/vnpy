@@ -98,11 +98,13 @@ class DistData(BaseData):
         self.open_time = open_time
         self.close_time = close_time
         self.dist = {}
+        self.volume = 0
 
     def add_tick(self, tick: TickData):
         if self.symbol == tick.symbol and self.exchange == tick.exchange:
             key = int(tick.last_price)
             vol = tick.last_volume
+            self.volume += vol
             if key in self.dist:
                 self.dist[key] += vol
             else:
@@ -115,6 +117,7 @@ class DistData(BaseData):
         self.open_time = dist.open_time
         self.close_time = dist.close_time
         self.dist = dist.dist.copy()
+        self.volume = dist.volume
 
     def calc_dist(self, ticks: list):
         t0 = ticks[0]
@@ -125,14 +128,17 @@ class DistData(BaseData):
         self.open_time = t0.datetime
         self.close_time = tend.datetime
         dist = {}
+        total_vol = 0
         for t in ticks:
             key = int(t.last_price)
             vol = t.last_volume
+            total_vol += vol
             if key in dist:
                 dist[key] += vol
             else:
                 dist[key] = vol
         self.dist = dist
+        self.volume = total_vol
 
     def calc_teeterboard(self, ticks, avg_price):
         func = lambda t, v: ((t.last_price-v)/v)*t.last_volume
@@ -140,10 +146,14 @@ class DistData(BaseData):
         return weight
 
     def total_vol(self):
-        return sum(self.dist.values())
+        if self.volume <= 0:
+            self.volume = sum(self.dist.values())
+            return self.volume
+        else:
+            return self.volume
 
     def less_vol(self, price: float = 0):
-        return sum([self.dist[k] for k in self.dist if price < k])
+        return sum([self.dist[k] for k in self.dist if price > k])
 
     def __add__(self, other):
         if self.symbol == other.symbol and self.exchange == other.exchange:
@@ -154,6 +164,7 @@ class DistData(BaseData):
                     self.dist[d] += other.dist[d]
                 else:
                     self.dist[d] = other.dist[d]
+            self.volume += other.volume
         return self
 
     def __str__(self):
@@ -345,11 +356,12 @@ class VlineData(BaseData):
         return False
 
     def __str__(self):
-        return '%s P:%.3f O:%.3f C:%.3f H:%.3f L:%.3f V:%.3f OT:%s CT:%s' % (self.symbol, self.avg_price,
-                                                                             self.open_price, self.close_price,
-                                                                             self.high_price, self.low_price,
-                                                                             self.volume,
-                                                                             self.open_time, self.close_time)
+        return '%s P:%.3f O:%.3f C:%.3f H:%.3f L:%.3f V:%.3f %s OT:%s CT:%s' % (self.symbol, self.avg_price,
+                                                                                self.open_price, self.close_price,
+                                                                                self.high_price, self.low_price,
+                                                                                self.volume,
+                                                                                self.close_time - self.open_time,
+                                                                                self.open_time, self.close_time)
 
 
 @dataclass

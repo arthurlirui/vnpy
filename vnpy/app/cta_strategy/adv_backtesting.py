@@ -86,8 +86,8 @@ class AdvBacktestingEngine:
         self.exchange_name: str = 'Binance'
         self.symbol = 'BTCUSDT'
         self.symbol_list = ['BTC', 'USDT']
-        self.sid = 100001
-        self.eid = 2000000
+        self.sid = 4000001
+        self.eid = 4100000
         self.suffix = 'trade'
         self.ndf = None
         self.gateway_name = 'BINANCE'
@@ -207,9 +207,17 @@ class AdvBacktestingEngine:
             if c % 10000 == 0:
                 vt_orderids = list(self.active_limit_orders.keys())
                 for vt_orderid in vt_orderids:
-                    order_price = self.active_limit_orders[vt_orderid].price
-                    if abs(order_price-tick.last_price) > 10:
+                    cur_order = self.active_limit_orders[vt_orderid]
+                    print(cur_order)
+                    price = cur_order.price
+                    datetime = cur_order.datetime
+                    is_large_gap = abs(price-tick.last_price) > 300
+                    is_old_order = tick.datetime - datetime > timedelta(hours=1)
+                    if is_large_gap or is_old_order:
+                        print('Canceling %s' % vt_orderid)
                         self.cancel_limit_order(self.strategy, vt_orderid)
+
+        print(self.ndf.shape)
         print(self.ndf.iloc[0])
         print(self.ndf.iloc[-1])
         self.output("历史数据回放结束")
