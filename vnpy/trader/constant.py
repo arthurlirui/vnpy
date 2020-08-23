@@ -14,6 +14,37 @@ class Direction(Enum):
     NET = "净"
 
 
+class MarketEvent(Enum):
+    GAIN = "涨"
+    SLIP = "跌"
+
+    SURGE = "暴涨"
+    SLUMP = "暴跌"
+
+    CLIMB = "爬升"
+    RETREAT = "阴跌"
+
+    INFLOW = "资金流入"
+    OUTFLOW = "资金流出"
+
+    TOP_DIVERGENCE = "高位回落"
+    BOTTOM_DIVERGENCE = "触底反弹"
+
+    HOVER = "水静鹅飞"
+
+
+class MarketAction(Enum):
+    HOLD = "持仓"
+    FULL = "满仓"
+    CLOSE = "平仓"
+
+    AUTO_BID = "定投买"
+    AUTO_ASK = "定投卖"
+
+    BOTTOM_FISHING = "抄底"
+    TOP_ESCAPE = "逃顶"
+
+
 class Offset(Enum):
     """
     Offset of order/trade.
