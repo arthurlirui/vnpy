@@ -160,6 +160,33 @@ def get_digits(value: float) -> int:
         return len(buf)
 
 
+class MarketEventGenerator:
+    def __init__(self):
+        '''
+        current market event and timestamp
+        '''
+        # market gain symbol
+        self.gain = False
+        self.climb = False
+        self.surge = False
+        self.inflow = False
+
+        # market hover
+        self.hover = False
+
+        # market slip symbol
+        self.slip = False
+        self.retreat = False
+        self.slump = False
+        self.outflow = False
+
+    def update_gain(self):
+        pass
+
+    def update_slip(self):
+        pass
+
+
 class DistGenerator:
     '''
     For
@@ -195,7 +222,6 @@ class VlineGenerator:
 
         self.all_dist: DistData = DistData()
         self.last_teeter_signal = 0.0
-        #self.last_bar: BarData = BarData()
 
         # buffer for saving ticks in vline
         self.ticks = []
@@ -227,7 +253,7 @@ class VlineGenerator:
             new_vline = True
         elif self.vline.volume > self.vol:
             self.on_vline(self.vline)
-
+            print('New:', self.vline)
             # update vline for multiple vlines
             self.update_vline(vline=self.vline)
 

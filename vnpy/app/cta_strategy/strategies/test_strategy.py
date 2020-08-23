@@ -174,7 +174,11 @@ class TestStrategy(CtaTemplate):
         vol = self.min_trade_vol
         price = self.last_tick.last_price
 
-        # detect breaking
+        state = self.check_breaking()
+        if state['high_break'] >= 4:
+            pass
+        if state['low_break'] >= 4:
+            pass
 
         # give trading parameters
         params = self.generate_trade_parameter()
@@ -198,20 +202,22 @@ class TestStrategy(CtaTemplate):
         # everything is ready send order to engine
         self.cta_engine.send_order(direction=direction, price=price, offset=Offset.NONE, volume=vol, stop=False, lock=False)
 
-        print('Order %s: P:%.3f V:%.3f Pos:%.3f N:%d' % (direction,
-                                                         self.last_tick.last_price,
-                                                         vol,
-                                                         self.position_dict[self.first_symbol],
-                                                         len(self.cta_engine.active_limit_orders)))
-        print(self.last_vline)
-        for v in self.vg.vline_buf:
-            print(self.vg.vline_buf[v])
-        pprint(params)
+        if False:
+            print('Order %s: P:%.3f V:%.3f Pos:%.3f N:%d' % (direction,
+                                                             self.last_tick.last_price,
+                                                             vol,
+                                                             self.position_dict[self.first_symbol],
+                                                             len(self.cta_engine.active_limit_orders)))
+            print(self.last_vline)
+            for v in self.vg.vline_buf:
+                print(self.vg.vline_buf[v])
+            pprint(params)
+            print()
         self.update_balance(direction=direction, price=price, vol=vol)
         # print('Pos:%.8f' % self.position_dict[self.first_symbol],
         #      'OrderN:', len(self.cta_engine.active_limit_orders))
 
-        print()
+
 
         # if direction == Direction.LONG:
         #
@@ -383,8 +389,6 @@ class TestStrategy(CtaTemplate):
                     place_new_order = False
         return place_new_order
 
-
-
     def update_position_by_dist(self):
         pass
 
@@ -397,7 +401,7 @@ class TestStrategy(CtaTemplate):
     def generate_trade_parameter(self, setting={}):
         last_price = self.last_tick.last_price
         params = {'direction': None, 'price': None, 'vol': None}
-        default_setting = {'high_price_thresh': 0.95, 'low_price_thresh': 0.05}
+        default_setting = {'high_price_thresh': 0.99, 'low_price_thresh': 0.01}
         high_price_thresh = default_setting['high_price_thresh']
         low_price_thresh = default_setting['low_price_thresh']
 
@@ -521,4 +525,18 @@ class TestStrategy(CtaTemplate):
         """"""
         self.cancel_all()
         self.write_log("执行全部撤单测试")
+
+    def check_breaking(self):
+        price = self.last_tick.last_price
+        high_price_thresh = 1
+        low_price_thresh = 0
+        state = {'high_break': 0, 'low_break': 0}
+        for i, v in enumerate(self.vg.dist_buf):
+            max_price = max(self.vg.dist_buf[v].keys())
+            min_price = min(self.vg.dist_buf[v].keys())
+            if price <= min_price+1:
+                state['low_break'] += 1
+            if price >= max_price-1:
+                state['high_break'] += 1
+        return state
 

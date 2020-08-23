@@ -87,7 +87,7 @@ class AdvBacktestingEngine:
         self.symbol = 'BTCUSDT'
         self.symbol_list = ['BTC', 'USDT']
         self.sid = 4000001
-        self.eid = 4100000
+        self.eid = 4500000
         self.suffix = 'trade'
         self.ndf = None
         self.gateway_name = 'BINANCE'

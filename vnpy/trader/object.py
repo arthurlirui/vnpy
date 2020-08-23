@@ -82,6 +82,31 @@ class TickData(BaseData):
         return '%s P:%.3f V:%.3f %s %s' % (self.symbol, self.last_price, self.last_volume, self.exchange, self.datetime)
 
 
+class MarketEventData(BaseData):
+    def __init__(self, symbol: str = None,
+                 exchange: Exchange = None,
+                 gateway_name: str = None,
+                 open_time: datetime = None,
+                 close_time: datetime = None):
+        self.symbol = symbol
+        self.exchange = exchange
+        self.gateway_name = gateway_name
+        self.open_time = open_time
+        self.close_time = close_time
+
+    def init_by_vlines(self, vlines: list = []):
+        if len(vlines) > 0:
+            self.symbol = vlines[0].symbol
+            self.exchange = vlines[0].exchange
+            self.gateway_name = vlines[0].gateway_name
+            self.open_time = vlines[0].open_time
+            self.close_time = vlines[-1].close_time
+
+    def calc_event(self, vlines: list = []):
+        if len(vlines) > 0:
+            pass
+
+
 class DistData(BaseData):
     """
     Price distribution of single vline
