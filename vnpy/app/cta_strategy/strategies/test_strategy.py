@@ -8,8 +8,8 @@ from vnpy.app.cta_strategy import (
 )
 
 from time import time
-from vnpy.trader.object import VlineData, BarData, PositionData
-from vnpy.trader.utility import VlineGenerator
+from vnpy.trader.object import VlineData, BarData, PositionData, MarketEventData
+from vnpy.trader.utility import VlineGenerator, MarketEventGenerator
 from vnpy.trader.object import Direction, Offset
 
 import pandas as pd
@@ -71,24 +71,13 @@ class TestStrategy(CtaTemplate):
         # system variables
         self.last_tick = None
         self.last_vline = None
+        self.last_market_event = None
 
         # history data from market
         self.ticks = []
         self.vlines = []
+        self.market_event = []
         self.vline_len = 0
-
-        #self.tick_df = None
-        #self.vline_df = None
-
-        #self.vg = VlineGenerator(on_vline=self.on_vline, vol=10)
-        # init system
-        #self.balance_dict = {}
-        #self.first_symbol = None
-        #self.second_symbol = None
-        #self.symbol = None
-
-        # init vline
-        #self.vol_list = []
 
     def init_parameter(self, parameters: dict = {}):
         for key in parameters:
@@ -97,22 +86,14 @@ class TestStrategy(CtaTemplate):
 
         for name in self.parameters:
             setattr(self, name, self.parameters[name])
-            #print(getattr(self, name))
-
-        # init frequently used parameter for system
-
-        # self.first_symbol = self.parameters['system']['first_symbol']
-        # self.second_symbol = self.parameters['system']['second_symbol']
-        # self.symbol = self.first_symbol+self.second_symbol
-        # init frequently used parameter for vline
-        # self.vol_list = self.parameters['vline']['vline_vol_list']
 
     def init_vline_generator(self):
         # init vline
         self.vg = VlineGenerator(on_vline=self.on_vline, vol=self.vline_vol)
-        self.vg.multi_vline_setting(on_multi_vline=self.on_multi_vline, vol_list=self.vline_vol_list)
+        self.vg.multi_vline_setting(on_multi_vline=self.on_multi_vline,
+                                    vol_list=self.vline_vol_list)
 
-        # light copy of vline_buf from vline_generator
+        # light copy of vline_buf from vline generator
         self.last_vline = self.vg.vline
         self.vlines = self.vg.vlines
         self.vline_buf = self.vg.vline_buf
@@ -125,6 +106,7 @@ class TestStrategy(CtaTemplate):
         Callback when strategy is inited.
         """
         self.write_log("策略初始化")
+
         # init account balance here
         self.on_init_balance()
         self.on_init_position()
@@ -150,6 +132,9 @@ class TestStrategy(CtaTemplate):
     def on_tick(self, tick: TickData):
         """
         Callback of new tick data update.
+        update list:
+        1. update tick: last_tick, vline_buf
+        2. update vline: (1) new vline (2) multi vline
         """
         if not tick.last_price:
             return
@@ -167,9 +152,10 @@ class TestStrategy(CtaTemplate):
             #params = self.generate_trade_parameter()
             self.vline_len = len(self.vg.vlines)
 
-        # self.tick_count += 1
-        # if self.tick_count >= self.test_trigger:
-        #     self.tick_count = 0
+        # update market event
+
+        # update market action
+
 
         vol = self.min_trade_vol
         price = self.last_tick.last_price
@@ -389,13 +375,10 @@ class TestStrategy(CtaTemplate):
                     place_new_order = False
         return place_new_order
 
-    def update_position_by_dist(self):
+    def update_event(self, ):
         pass
 
-    def update_position_by_ttb(self):
-        pass
-
-    def clean_order(self):
+    def update_action(self):
         pass
 
     def generate_trade_parameter(self, setting={}):
@@ -441,9 +424,17 @@ class TestStrategy(CtaTemplate):
         return is_valid
 
     def on_vline(self, vline: VlineData = None):
+        '''
+        1. update vline and vline_buf
+        2. update market event
+        3. update market action
+        4. update account
+        '''
         self.last_vline = self.vg.vline
         self.vlines = self.vg.vlines
         self.vline_buf = self.vg.vline_buf
+        # update market event
+
 
         # update position
         self.update_position()
@@ -494,8 +485,21 @@ class TestStrategy(CtaTemplate):
     def init_market_state(self):
         pass
 
-    def update_market_state(self):
-        pass
+    def update_market_event(self):
+        med = MarketEventData(symbol=v.symbol, exchange=v.exchange, gateway_name=v.gateway_name, open_time=v.open_time,
+                              close_time=v.close_time)
+        dp_avg = v.avg_price - pv.avg_price
+        dp_high = v.high_price - pv.high_price
+        dp_low = v.low_price - pv.low_price
+
+        if dp_avg >= 0 and dp_high >= 0 and dp_low >= 0:
+            med.event = MarketEvent.GAIN
+        elif dp_avg <= 0 and dp_high <= 0 and dp_low <= 0:
+            med.event = MarketEvent.SLIP
+        else:
+            med.event = MarketEvent.HOVER
+        print(med)
+        mel.append(med)
 
     def init_account_state(self):
         pass

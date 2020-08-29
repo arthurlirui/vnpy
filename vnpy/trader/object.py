@@ -7,7 +7,7 @@ from datetime import datetime
 from logging import INFO
 import pandas as pd
 
-from .constant import Direction, Exchange, Interval, Offset, Status, Product, OptionType, OrderType
+from .constant import Direction, Exchange, Interval, Offset, Status, Product, OptionType, OrderType, MarketEvent
 import numpy as np
 
 ACTIVE_STATUSES = set([Status.SUBMITTING, Status.NOTTRADED, Status.PARTTRADED])
@@ -94,6 +94,9 @@ class MarketEventData(BaseData):
         self.open_time = open_time
         self.close_time = close_time
 
+        # default event is hover
+        self.event = MarketEvent.HOVER
+
     def init_by_vlines(self, vlines: list = []):
         if len(vlines) > 0:
             self.symbol = vlines[0].symbol
@@ -102,9 +105,9 @@ class MarketEventData(BaseData):
             self.open_time = vlines[0].open_time
             self.close_time = vlines[-1].close_time
 
-    def calc_event(self, vlines: list = []):
-        if len(vlines) > 0:
-            pass
+    def __str__(self):
+        return '%s %s %s %s %s' % (self.event.value, self.symbol, self.exchange.value,
+                                   self.open_time, self.close_time)
 
 
 class DistData(BaseData):
