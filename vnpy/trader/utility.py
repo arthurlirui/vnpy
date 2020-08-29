@@ -13,8 +13,8 @@ from math import floor, ceil
 import numpy as np
 import talib
 
-from .object import BarData, TickData, VlineData, TradeData, DistData
-from .constant import Exchange, Interval
+from .object import BarData, TickData, VlineData, TradeData, DistData, MarketEventData
+from .constant import Exchange, Interval, MarketEvent
 
 
 log_formatter = logging.Formatter('[%(asctime)s] %(message)s')
@@ -161,29 +161,122 @@ def get_digits(value: float) -> int:
 
 
 class MarketEventGenerator:
-    def __init__(self):
+    def __init__(self, on_event: Callable):
         '''
         current market event and timestamp
         '''
+        # event list
+        self.on_event = on_event
+        self.market_event_list = []
+        self.last_event = MarketEventData()
+
+        # parameters for calculating market event
+
         # market gain symbol
-        self.gain = False
-        self.climb = False
-        self.surge = False
-        self.inflow = False
+        self.gain = MarketEventData()
+        self.climb = MarketEventData()
+        self.surge = MarketEventData()
+        self.inflow = MarketEventData()
 
         # market hover
-        self.hover = False
+        self.hover = MarketEventData()
 
         # market slip symbol
-        self.slip = False
-        self.retreat = False
-        self.slump = False
-        self.outflow = False
+        self.slip = MarketEventData()
+        self.retreat = MarketEventData()
+        self.slump = MarketEventData()
+        self.outflow = MarketEventData()
 
-    def update_gain(self):
+        self.top_divergence = MarketEventData()
+        self.bottom_divergence = MarketEventData()
+
+        self.event_list = [self.gain, self.slip,
+                           self.climb, self.retreat,
+                           self.surge, self.slump,
+                           self.inflow, self.outflow,
+                           self.hover,
+                           self.top_divergence, self.bottom_divergence]
+        self.func_list = [self.update_gain, self.update_slip,
+                          self.update_climb, self.update_retreat,
+                          self.update_surge, self.update_slump,
+                          self.update_inflow, self.update_outflow,
+                          self.update_hover,
+                          self.update_top_divergence, self.update_bottom_divergence]
+
+    def init_event(self, vline: VlineData):
+        for event in self.event_list:
+            event.init_by_vlines(vlines=[vline])
+
+    def update_event(self, vlines: list = []):
+        if len(vlines) == 0:
+            return
+        v0 = vlines[0]
+        new_event = False
+
+        for i, event in enumerate(self.event_list):
+            self.func_list[i](vlines=vlines)
+
+    def update_gain(self, vlines: list = []):
+        if len(vlines) < 2:
+            return
+        v0 = vlines[-2]
+        v1 = vlines[-1]
+        med = MarketEventData(symbol=v0.symbol,
+                              exchange=v0.exchange,
+                              gateway_name=v0.gateway_name,
+                              open_time=v0.open_time,
+                              close_time=v1.close_time)
+        dp_avg = v1.avg_price - v0.avg_price
+        dp_high = v1.high_price - v0.high_price
+        dp_low = v1.low_price - v0.low_price
+        if dp_avg >= 0 and dp_high >= 0 and dp_low >= 0:
+            med.event = MarketEvent.GAIN
+            self.gain = med
+            print(self.gain)
+
+    def update_slip(self, vlines: list = []):
+        if len(vlines) < 2:
+            return
+        v0 = vlines[-2]
+        v1 = vlines[-1]
+        med = MarketEventData(symbol=v0.symbol,
+                              exchange=v0.exchange,
+                              gateway_name=v0.gateway_name,
+                              open_time=v0.open_time,
+                              close_time=v1.close_time)
+        dp_avg = v1.avg_price - v0.avg_price
+        dp_high = v1.high_price - v0.high_price
+        dp_low = v1.low_price - v0.low_price
+        if dp_avg <= 0 and dp_high <= 0 and dp_low <= 0:
+            med.event = MarketEvent.SLIP
+            self.slip = med
+            print(self.slip)
+
+    def update_climb(self, vlines: list = []):
         pass
 
-    def update_slip(self):
+    def update_retreat(self, vlines: list = []):
+        pass
+
+    def update_surge(self, vlines: list = []):
+        pass
+
+    def update_slump(self, vlines: list = []):
+        pass
+
+    def update_inflow(self, vlines: list = []):
+        pass
+
+    def update_outflow(self, vlines: list = []):
+        pass
+
+    def update_top_divergence(self, vlines: list = []):
+        pass
+
+    def update_bottom_divergence(self, vlines: list = []):
+        pass
+
+    def update_hover(self, vlines: list = []):
         pass
 
 

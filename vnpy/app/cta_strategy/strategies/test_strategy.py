@@ -68,6 +68,10 @@ class TestStrategy(CtaTemplate):
         self.vline_buf = {}
         self.init_vline_generator()
 
+        # market event generator
+        self.meg = None
+        self.init_market_event_generator()
+
         # system variables
         self.last_tick = None
         self.last_vline = None
@@ -76,7 +80,7 @@ class TestStrategy(CtaTemplate):
         # history data from market
         self.ticks = []
         self.vlines = []
-        self.market_event = []
+        self.market_events = []
         self.vline_len = 0
 
     def init_parameter(self, parameters: dict = {}):
@@ -97,6 +101,9 @@ class TestStrategy(CtaTemplate):
         self.last_vline = self.vg.vline
         self.vlines = self.vg.vlines
         self.vline_buf = self.vg.vline_buf
+
+    def init_market_event_generator(self):
+        self.meg = MarketEventGenerator(on_event=self.on_event)
 
     def print_parameter(self):
         pass
@@ -149,7 +156,6 @@ class TestStrategy(CtaTemplate):
         # update vline
         if not self.vline_len == len(self.vg.vlines):
             self.on_vline()
-            #params = self.generate_trade_parameter()
             self.vline_len = len(self.vg.vlines)
 
         # update market event
@@ -375,8 +381,12 @@ class TestStrategy(CtaTemplate):
                     place_new_order = False
         return place_new_order
 
-    def update_event(self, ):
-        pass
+    def update_event(self):
+        self.meg.update_event(self.vlines)
+        if not self.meg.gain.is_empty():
+            print(self.meg.gain)
+        if not self.meg.slip.is_empty():
+            print(self.meg.slip)
 
     def update_action(self):
         pass
@@ -433,11 +443,15 @@ class TestStrategy(CtaTemplate):
         self.last_vline = self.vg.vline
         self.vlines = self.vg.vlines
         self.vline_buf = self.vg.vline_buf
-        # update market event
 
+        # update market event
+        self.update_event()
 
         # update position
         self.update_position()
+
+    def on_event(self):
+        pass
 
     def on_multi_vline(self, vline: VlineData, vol: int):
         #print(self.vline_buf[vol])
@@ -536,8 +550,8 @@ class TestStrategy(CtaTemplate):
         low_price_thresh = 0
         state = {'high_break': 0, 'low_break': 0}
         for i, v in enumerate(self.vg.dist_buf):
-            max_price = max(self.vg.dist_buf[v].keys())
-            min_price = min(self.vg.dist_buf[v].keys())
+            max_price = max(self.vg.dist_buf[v].dist.keys())
+            min_price = min(self.vg.dist_buf[v].dist.keys())
             if price <= min_price+1:
                 state['low_break'] += 1
             if price >= max_price-1:

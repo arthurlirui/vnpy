@@ -94,8 +94,8 @@ class MarketEventData(BaseData):
         self.open_time = open_time
         self.close_time = close_time
 
-        # default event is hover
-        self.event = MarketEvent.HOVER
+        # default event is None
+        self.event: MarketEvent = None
 
     def init_by_vlines(self, vlines: list = []):
         if len(vlines) > 0:
@@ -105,9 +105,18 @@ class MarketEventData(BaseData):
             self.open_time = vlines[0].open_time
             self.close_time = vlines[-1].close_time
 
+    def is_empty(self):
+        if not self.event:
+            return True
+        else:
+            return False
+
     def __str__(self):
-        return '%s %s %s %s %s' % (self.event.value, self.symbol, self.exchange.value,
-                                   self.open_time, self.close_time)
+        if self.is_empty():
+            return None
+        else:
+            return '%s %s %s %s %s' % (self.event.value, self.symbol, self.exchange.value,
+                                       self.open_time, self.close_time)
 
 
 class DistData(BaseData):
