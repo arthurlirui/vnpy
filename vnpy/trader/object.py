@@ -106,7 +106,7 @@ class MarketEventData(BaseData):
             self.close_time = vlines[-1].close_time
 
     def is_empty(self):
-        if not self.event:
+        if not self.event and not self.open_time and not self.close_time:
             return True
         else:
             return False

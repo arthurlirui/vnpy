@@ -223,70 +223,99 @@ class MarketEventGenerator:
             return
 
         for i, func in enumerate(self.func_list):
-            func(vlines=vlines)
+            is_event = func(vlines=vlines)
+            if is_event:
+                self.on_event(self.event_list[i])
+                print(self.event_list[i])
 
     def update_gain(self, vlines: list = []):
+        is_event = False
         if len(vlines) < 2:
             return
         v0 = vlines[-2]
         v1 = vlines[-1]
-        med = MarketEventData(symbol=v0.symbol,
-                              exchange=v0.exchange,
-                              gateway_name=v0.gateway_name,
-                              open_time=v0.open_time,
-                              close_time=v1.close_time)
+        # med = MarketEventData(symbol=v0.symbol,
+        #                       exchange=v0.exchange,
+        #                       gateway_name=v0.gateway_name,
+        #                       open_time=v0.open_time,
+        #                       close_time=v1.close_time)
         dp_avg = v1.avg_price - v0.avg_price
         dp_high = v1.high_price - v0.high_price
         dp_low = v1.low_price - v0.low_price
         if dp_avg >= 0 and dp_high >= 0 and dp_low >= 0:
-            med.event = MarketEvent.GAIN
-            self.gain = med
+            #med.event = MarketEvent.GAIN
+            self.gain.event = MarketEvent.GAIN
+            self.gain.symbol = v0.symbol
+            self.gain.exchange = v0.exchange
+            self.gain.gateway_name = v0.gateway_name
+            self.gain.open_time = v0.open_time
+            self.gain.close_time = v1.close_time
+            is_event = True
             #print(self.gain)
+        return is_event
 
     def update_slip(self, vlines: list = []):
+        is_event = False
         if len(vlines) < 2:
             return
         v0 = vlines[-2]
         v1 = vlines[-1]
-        med = MarketEventData(symbol=v0.symbol,
-                              exchange=v0.exchange,
-                              gateway_name=v0.gateway_name,
-                              open_time=v0.open_time,
-                              close_time=v1.close_time)
+
         dp_avg = v1.avg_price - v0.avg_price
         dp_high = v1.high_price - v0.high_price
         dp_low = v1.low_price - v0.low_price
         if dp_avg <= 0 and dp_high <= 0 and dp_low <= 0:
-            med.event = MarketEvent.SLIP
-            self.slip = med
+            # med = MarketEventData(symbol=v0.symbol,
+            #                       exchange=v0.exchange,
+            #                       gateway_name=v0.gateway_name,
+            #                       open_time=v0.open_time,
+            #                       close_time=v1.close_time)
+            #med.event = MarketEvent.SLIP
+            self.slip.event = MarketEvent.SLIP
+            self.slip.symbol = v0.symbol
+            self.slip.exchange = v0.exchange
+            self.slip.gateway_name = v0.gateway_name
+            self.slip.open_time = v0.open_time
+            self.slip.close_time = v1.close_time
+            is_event = True
             #print(self.slip)
+        return is_event
 
     def update_climb(self, vlines: list = []):
-        pass
+        is_event = False
+        return is_event
 
     def update_retreat(self, vlines: list = []):
-        pass
+        is_event = False
+        return is_event
 
     def update_surge(self, vlines: list = []):
-        pass
+        is_event = False
+        return is_event
 
     def update_slump(self, vlines: list = []):
-        pass
+        is_event = False
+        return is_event
 
     def update_inflow(self, vlines: list = []):
-        pass
+        is_event = False
+        return is_event
 
     def update_outflow(self, vlines: list = []):
-        pass
+        is_event = False
+        return is_event
 
     def update_top_divergence(self, vlines: list = []):
-        pass
+        is_event = False
+        return is_event
 
     def update_bottom_divergence(self, vlines: list = []):
-        pass
+        is_event = False
+        return is_event
 
     def update_hover(self, vlines: list = []):
-        pass
+        is_event = False
+        return is_event
 
 
 class DistGenerator:

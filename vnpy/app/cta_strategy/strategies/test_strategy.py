@@ -383,11 +383,11 @@ class TestStrategy(CtaTemplate):
 
     def update_event(self):
         self.meg.update_event(self.vlines)
-        if not self.meg.gain.is_empty():
-            print(self.meg.gain)
-        if not self.meg.slip.is_empty():
-            print(self.meg.slip)
-        print()
+        # if not self.meg.gain.is_empty():
+        #     print(self.meg.gain)
+        # if not self.meg.slip.is_empty():
+        #     print(self.meg.slip)
+        # print()
 
     def update_action(self):
         pass
@@ -451,8 +451,14 @@ class TestStrategy(CtaTemplate):
         # update position
         self.update_position()
 
-    def on_event(self):
-        pass
+    def on_event(self, me: MarketEventData):
+        nme = MarketEventData(symbol=me.symbol,
+                              exchange=me.exchange,
+                              gateway_name=me.gateway_name,
+                              open_time=me.open_time,
+                              close_time=me.close_time)
+        nme.event = me.event
+        self.market_events.append(nme)
 
     def on_multi_vline(self, vline: VlineData, vol: int):
         #print(self.vline_buf[vol])
