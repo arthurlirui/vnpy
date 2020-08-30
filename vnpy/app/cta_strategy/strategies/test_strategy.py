@@ -155,9 +155,9 @@ class TestStrategy(CtaTemplate):
 
         # update vline
         if not self.vline_len == len(self.vg.vlines):
-            self.on_vline()
+            #self.on_vline()
             self.vline_len = len(self.vg.vlines)
-
+        return
         # update market event
 
         # update market action
