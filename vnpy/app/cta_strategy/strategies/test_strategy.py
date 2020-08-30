@@ -387,6 +387,7 @@ class TestStrategy(CtaTemplate):
             print(self.meg.gain)
         if not self.meg.slip.is_empty():
             print(self.meg.slip)
+        print()
 
     def update_action(self):
         pass

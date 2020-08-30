@@ -190,6 +190,17 @@ class MarketEventGenerator:
         self.top_divergence = MarketEventData()
         self.bottom_divergence = MarketEventData()
 
+        # self.event_func_list = [(self.gain, self.update_gain),
+        #                         (self.slip, self.update_slip),
+        #                         (self.climb, self.update_climb),
+        #                         (self.retreat, self.update_retreat),
+        #                         (self.surge, self.update_surge),
+        #                         (self.slump, self.update_slump),
+        #                         (self.inflow, self.update_inflow),
+        #                         (self.outflow, self.update_outflow),
+        #                         (self.hover, self.update_hover),
+        #                         (self.top_divergence, self.update_top_divergence),
+        #                         (self.bottom_divergence, self.update_bottom_divergence)]
         self.event_list = [self.gain, self.slip,
                            self.climb, self.retreat,
                            self.surge, self.slump,
@@ -210,11 +221,9 @@ class MarketEventGenerator:
     def update_event(self, vlines: list = []):
         if len(vlines) == 0:
             return
-        v0 = vlines[0]
-        new_event = False
 
-        for i, event in enumerate(self.event_list):
-            self.func_list[i](vlines=vlines)
+        for i, func in enumerate(self.func_list):
+            func(vlines=vlines)
 
     def update_gain(self, vlines: list = []):
         if len(vlines) < 2:
@@ -232,7 +241,7 @@ class MarketEventGenerator:
         if dp_avg >= 0 and dp_high >= 0 and dp_low >= 0:
             med.event = MarketEvent.GAIN
             self.gain = med
-            print(self.gain)
+            #print(self.gain)
 
     def update_slip(self, vlines: list = []):
         if len(vlines) < 2:
@@ -250,7 +259,7 @@ class MarketEventGenerator:
         if dp_avg <= 0 and dp_high <= 0 and dp_low <= 0:
             med.event = MarketEvent.SLIP
             self.slip = med
-            print(self.slip)
+            #print(self.slip)
 
     def update_climb(self, vlines: list = []):
         pass
