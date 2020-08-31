@@ -161,6 +161,10 @@ def get_digits(value: float) -> int:
 
 
 class MarketEventGenerator:
+    default_params = {'gain_thresh': 0, 'slip_thresh': 0,
+                      'climb_thresh': 0, 'retreat_thresh': 0,
+                      'climb_count': 5, 'retreat_count': 5}
+
     def __init__(self, on_event: Callable):
         '''
         current market event and timestamp
@@ -214,6 +218,14 @@ class MarketEventGenerator:
                           self.update_hover,
                           self.update_top_divergence, self.update_bottom_divergence]
 
+        self.params = {}
+        self.update_params(params=self.default_params)
+
+    def update_params(self, params={}):
+        for key in params:
+            if key in self.default_params:
+                self.params[key] = params[key]
+
     def init_event(self, vline: VlineData):
         for event in self.event_list:
             event.init_by_vlines(vlines=[vline])
@@ -238,7 +250,9 @@ class MarketEventGenerator:
         dp_avg = v1.avg_price - v0.avg_price
         dp_high = v1.high_price - v0.high_price
         dp_low = v1.low_price - v0.low_price
-        if dp_avg >= 0 and dp_high >= 0 and dp_low >= 0:
+        if dp_avg >= self.params['gain_thresh'] \
+                and dp_high >= self.params['gain_thresh'] \
+                and dp_low >= self.params['gain_thresh']:
             self.gain.event = MarketEvent.GAIN
             self.gain.symbol = v0.symbol
             self.gain.exchange = v0.exchange
@@ -257,7 +271,9 @@ class MarketEventGenerator:
         dp_avg = v1.avg_price - v0.avg_price
         dp_high = v1.high_price - v0.high_price
         dp_low = v1.low_price - v0.low_price
-        if dp_avg <= 0 and dp_high <= 0 and dp_low <= 0:
+        if dp_avg <= self.params['slip_thresh'] \
+                and dp_high <= self.params['slip_thresh'] \
+                and dp_low <= self.params['slip_thresh']:
             self.slip.event = MarketEvent.SLIP
             self.slip.symbol = v0.symbol
             self.slip.exchange = v0.exchange
@@ -276,9 +292,9 @@ class MarketEventGenerator:
                 pv = v
                 continue
             dp = pv.avg_price - v.avg_price
-            if dp > 0:
+            if dp >= self.params['climb_thresh']:
                 count += 1
-                if count >= 5:
+                if count >= self.params['climb_count']:
                     self.climb.open_time = v.open_time
                     is_event = True
             else:
@@ -301,9 +317,9 @@ class MarketEventGenerator:
                 pv = v
                 continue
             dp = pv.avg_price - v.avg_price
-            if dp < 0:
+            if dp <= self.params['retreat_thresh']:
                 count += 1
-                if count >= 5:
+                if count >= self.params['retreat_count']:
                     self.retreat.open_time = v.open_time
                     is_event = True
             else:

@@ -1,3 +1,8 @@
+import sys
+from pprint import pprint
+pprint(sys.path)
+sys.path.append('/home/lir0b/Code/Trading/')
+
 from vnpy.app.cta_strategy.backtesting import BacktestingEngine, OptimizationSetting
 from vnpy.app.cta_strategy.adv_backtesting import AdvBacktestingEngine
 from vnpy.app.cta_strategy.strategies.atr_rsi_strategy import AtrRsiStrategy
@@ -28,7 +33,7 @@ engine.set_parameters(
 # self.gateway_name = 'BINANCE'
 
 parameters = {'vline_vol': 5,
-              'vline_vol_list': [10, 20, 40],
+              'vline_vol_list': [10, 20, 40, 80, 160],
               'min_vline_num': 10,
               'max_vline_num': 1000,
               'first_symbol': 'BTC',
