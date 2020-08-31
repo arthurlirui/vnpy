@@ -269,10 +269,51 @@ class MarketEventGenerator:
 
     def update_climb(self, vlines: list = []):
         is_event = False
+        pv = None
+        count = 0
+        for v in reversed(vlines):
+            if not pv:
+                pv = v
+                continue
+            dp = pv.avg_price - v.avg_price
+            if dp > 0:
+                count += 1
+                if count >= 5:
+                    self.climb.open_time = v.open_time
+                    is_event = True
+            else:
+                break
+        if is_event:
+            self.climb.symbol = pv.symbol
+            self.climb.exchange = pv.exchange
+            self.climb.gateway_name = pv.gateway_name
+            self.climb.close_time = vlines[-1].close_time
+            self.climb.event = MarketEvent.CLIMB
+
         return is_event
 
     def update_retreat(self, vlines: list = []):
         is_event = False
+        pv = None
+        count = 0
+        for v in reversed(vlines):
+            if not pv:
+                pv = v
+                continue
+            dp = pv.avg_price - v.avg_price
+            if dp < 0:
+                count += 1
+                if count >= 5:
+                    self.retreat.open_time = v.open_time
+                    is_event = True
+            else:
+                break
+        if is_event:
+            self.retreat.symbol = pv.symbol
+            self.retreat.exchange = pv.exchange
+            self.retreat.gateway_name = pv.gateway_name
+            self.retreat.close_time = vlines[-1].close_time
+            self.retreat.event = MarketEvent.RETREAT
         return is_event
 
     def update_surge(self, vlines: list = []):
