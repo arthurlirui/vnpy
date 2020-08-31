@@ -182,8 +182,8 @@ class AdvBacktestingEngine:
         """
         1. init strategy
         2. process each tick
-        3. update market state
-        4. update account state
+        3. update market event
+        4. select market action (account state, market event)
         5. execute order
         """
         self.trading = True

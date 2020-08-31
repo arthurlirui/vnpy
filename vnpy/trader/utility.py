@@ -160,10 +160,18 @@ def get_digits(value: float) -> int:
         return len(buf)
 
 
+class MarketActionGenerator:
+    default_params = {}
+
+    def __init__(self):
+        pass
+
+
 class MarketEventGenerator:
     default_params = {'gain_thresh': 0, 'slip_thresh': 0,
                       'climb_thresh': 0, 'retreat_thresh': 0,
-                      'climb_count': 5, 'retreat_count': 5}
+                      'climb_count': 5, 'retreat_count': 5,
+                      'hover_count': 5, 'hover_thresh': 10}
 
     def __init__(self, on_event: Callable):
         '''
@@ -358,6 +366,26 @@ class MarketEventGenerator:
 
     def update_hover(self, vlines: list = []):
         is_event = False
+        max_price = vlines[-1].avg_price
+        min_price = vlines[-1].avg_price
+        cc = 0
+        for v in reversed(vlines):
+            max_price = max(max_price, v.avg_price)
+            min_price = min(min_price, v.avg_price)
+            if max_price - min_price < self.params['hover_thresh']:
+                cc += 1
+                open_time = v.open_time
+            else:
+                break
+        if cc >= self.params['hover_count']:
+            is_event = True
+            v0 = vlines[-1]
+            self.hover.symbol = v0.symbol
+            self.hover.exchange = v0.exchange
+            self.hover.gateway_name = v0.gateway_name
+            self.hover.open_time = open_time
+            self.hover.close_time = v0.close_time
+            self.hover.event = MarketEvent.HOVER
         return is_event
 
 
