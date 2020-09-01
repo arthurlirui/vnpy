@@ -246,8 +246,8 @@ class MarketEventGenerator:
             is_event = func(vlines=vlines)
             if is_event:
                 self.on_event(self.event_list[i])
-                print(i, self.event_list[i])
-                print()
+                #print(i, self.event_list[i])
+                #print()
 
     def update_gain(self, vlines: list = []):
         is_event = False
