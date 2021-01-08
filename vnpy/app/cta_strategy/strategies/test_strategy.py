@@ -154,7 +154,7 @@ class TestStrategy(CtaTemplate):
                 return
 
         # update market event
-        print(self.meg.gain)
+        #print(self.meg.gain)
         # update market action
 
         vol = self.min_trade_vol

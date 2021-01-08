@@ -204,7 +204,7 @@ class AdvBacktestingEngine:
                 vt_orderids = list(self.active_limit_orders.keys())
                 for vt_orderid in vt_orderids:
                     cur_order = self.active_limit_orders[vt_orderid]
-                    #print(cur_order)
+                    print(cur_order)
                     price = cur_order.price
                     datetime = cur_order.datetime
                     is_large_gap = abs(price-tick.last_price) > 300
