@@ -93,6 +93,7 @@ class TestAlgo(AlgoTemplate):
 
     def on_market_trade(self, trade: TradeData):
         """"""
+        #print(trade)
         # update vline
         if self.vline is not None:
             vline_new = VlineData(symbol=trade.symbol, exchange=trade.exchange,
@@ -109,6 +110,7 @@ class TestAlgo(AlgoTemplate):
                 self.write_log(msg)
                 self.vline = None
         else:
+            #print(trade.symbol)
             self.vline = VlineData(symbol=trade.symbol, exchange=trade.exchange,
                                    open_time=trade.datetime, close_time=trade.datetime, gateway_name=trade.gateway_name,
                                    volume=trade.volume, open_price=trade.price, close_price=trade.price,

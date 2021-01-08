@@ -153,19 +153,12 @@ class TestStrategy(CtaTemplate):
             if self.vg.vline_buf[v].volume < 0.9*v:
                 return
 
-        # update vline
-        if not self.vline_len == len(self.vg.vlines):
-            #self.on_vline()
-            self.vline_len = len(self.vg.vlines)
-        return
         # update market event
-
+        print(self.meg.gain)
         # update market action
-
 
         vol = self.min_trade_vol
         price = self.last_tick.last_price
-
         state = self.check_breaking()
         if state['high_break'] >= 4:
             pass
@@ -206,51 +199,6 @@ class TestStrategy(CtaTemplate):
             pprint(params)
             print()
         self.update_balance(direction=direction, price=price, vol=vol)
-        # print('Pos:%.8f' % self.position_dict[self.first_symbol],
-        #      'OrderN:', len(self.cta_engine.active_limit_orders))
-
-
-
-        # if direction == Direction.LONG:
-        #
-        #     # buy_value = price * vol
-        #     #vol = params[Direction.LONG]['vol']
-        #     #price = params[Direction.LONG]['price']
-        #
-        #     self.cta_engine.send_order(direction=Direction.LONG, price=price,
-        #                                offset=Offset.NONE, volume=vol, stop=False, lock=False)
-        #
-        #     print(self.last_vline)
-        #     print(self.vg.vline_buf[640])
-        #     print('Order BUY: P:%.3f V:%.3f Pos:%.3f N:%d' % (self.last_tick.last_price+10, vol,
-        #                                                       self.position_dict[self.first_symbol],
-        #                                                       len(self.cta_engine.active_limit_orders)))
-        #     self.update_balance(Direction.LONG, price, vol)
-        #     # print('Pos:%.8f' % self.position_dict[self.first_symbol],
-        #     #      'OrderN:', len(self.cta_engine.active_limit_orders))
-        #     print()
-        #
-        # if direction == Direction.SHORT:
-        #     if not self.check_balance(Direction.SHORT, price, vol):
-        #         return
-        #     if not self.check_position(Direction.SHORT):
-        #         return
-        #     #vol = params[Direction.SHORT]['vol']
-        #     #price = params[Direction.SHORT]['price']
-        #
-        #     self.cta_engine.send_order(direction=Direction.SHORT, price=price,
-        #                                offset=Offset.NONE, volume=vol, stop=False, lock=False)
-        #
-        #     print(self.last_vline)
-        #     print(self.vg.vline_buf[640])
-        #     print('Order SELL: P:%.3f V:%.3f Pos:%.3f N:%d' % (self.last_tick.last_price-10, vol,
-        #                                                        self.position_dict[self.first_symbol],
-        #                                                        len(self.cta_engine.active_limit_orders)))
-        #     self.update_balance(Direction.SHORT, price, vol)
-        #     # print('Pos:%.8f' % self.position_dict[self.first_symbol],
-        #     #      'OrderN:', len(self.cta_engine.active_limit_orders))
-        #     print()
-
         self.put_event()
 
     def check_trade_cond(self):
@@ -383,11 +331,6 @@ class TestStrategy(CtaTemplate):
 
     def update_event(self):
         self.meg.update_event(self.vlines)
-        # if not self.meg.gain.is_empty():
-        #     print(self.meg.gain)
-        # if not self.meg.slip.is_empty():
-        #     print(self.meg.slip)
-        # print()
 
     def update_action(self):
         pass

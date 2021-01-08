@@ -30,12 +30,11 @@ from .base import (
     INTERVAL_DELTA_MAP
 )
 from .template import CtaTemplate
-import dl.utils as dlu
+from utils.data import load_trades_xls, datetime_tick
 
 
 class AdvBacktestingEngine:
     """"""
-
     engine_type = EngineType.BACKTESTING
     gateway_name = "ADV_BACKTESTING"
 
@@ -157,12 +156,9 @@ class AdvBacktestingEngine:
 
     def load_data(self):
         """"""
-        ndf = dlu.load_trades_xls(filepath=self.filepath,
-                                  exchange=self.exchange_name,
-                                  symbol=self.symbol,
-                                  sid=self.sid, eid=self.eid,
-                                  subffix=self.suffix)
-        ndf = dlu.datetime_tick(ndf)
+        ndf = load_trades_xls(filepath=self.filepath, exchange=self.exchange_name,
+                              symbol=self.symbol, sid=self.sid, eid=self.eid, subffix=self.suffix)
+        ndf = datetime_tick(ndf)
         self.ndf = ndf
         self.output(f"历史数据加载完成，数据量：{len(self.ndf)}")
 
@@ -208,7 +204,7 @@ class AdvBacktestingEngine:
                 vt_orderids = list(self.active_limit_orders.keys())
                 for vt_orderid in vt_orderids:
                     cur_order = self.active_limit_orders[vt_orderid]
-                    print(cur_order)
+                    #print(cur_order)
                     price = cur_order.price
                     datetime = cur_order.datetime
                     is_large_gap = abs(price-tick.last_price) > 300
@@ -673,7 +669,7 @@ class AdvBacktestingEngine:
         self.tick = tick
         self.datetime = tick.datetime
 
-        self.cross_limit_order()
+        self.cross_limit_order(is_debug=False)
         #self.cross_stop_order()
         self.strategy.on_tick(tick)
 
@@ -682,14 +678,14 @@ class AdvBacktestingEngine:
 
         #self.update_daily_close(tick.last_price)
 
-    def cross_limit_order(self):
+    def cross_limit_order(self, is_debug=False):
         """
         Cross limit order with last bar/tick data.
         """
         #if len(self.active_limit_orders) > 0:
         #    print(len(self.active_limit_orders))
         is_process_tick = False
-        is_debug = True
+
         for order in list(self.active_limit_orders.values()):
             # Push order update with status "not traded" (pending).
 
