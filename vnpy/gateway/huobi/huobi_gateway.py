@@ -44,6 +44,11 @@ REST_HOST = "https://api.huobipro.com"
 WEBSOCKET_DATA_HOST = "wss://api.huobi.pro/ws"       # Market Data
 WEBSOCKET_TRADE_HOST = "wss://api.huobi.pro/ws/v2"     # Account and Order
 
+REST_HOST_AWS = "https://api-aws.huobi.pro"
+WEBSOCKET_DATA_HOST_AWS = "wss://api-aws.huobi.pro/ws"
+WEBSOCKET_DATA_HOST_FEED_AWS = "wss://api-aws.huobi.pro/feed"
+WEBSOCKET_TRADE_HOST_AWS = "wss://api-aws.huobi.pro/ws/v1"
+
 STATUS_HUOBI2VT = {
     "submitted": Status.NOTTRADED,
     "partial-filled": Status.PARTTRADED,
@@ -124,6 +129,9 @@ class HuobiGateway(BaseGateway):
         self.market_ws_api = HuobiDataWebsocketApi(self)
 
         self.orders: Dict[str, OrderData] = {}
+
+    def get_summary(self):
+        return self
 
     def get_order(self, orderid: str) -> OrderData:
         """"""
@@ -263,6 +271,14 @@ class HuobiRestApi(RestClient):
         self.query_account()
         self.query_order()
 
+    def query_market_status(self):
+        self.add_request(
+            method="GET",
+            path="/v2/market-status",
+            callback=self.on_query_market_status
+        )
+        #"https://status.huobigroup.com/api/v2/summary.json"
+
     def query_account(self) -> None:
         """"""
         self.add_request(
@@ -384,6 +400,9 @@ class HuobiRestApi(RestClient):
             extra=req
         )
 
+    def on_query_market_status(self):
+        pass
+
     def on_query_account(self, data: dict, request: Request) -> None:
         """"""
         if self.check_error(data, "查询账户"):
@@ -393,6 +412,24 @@ class HuobiRestApi(RestClient):
             if d["type"] == "spot":
                 self.account_id = d["id"]
                 self.gateway.write_log(f"账户代码{self.account_id}查询成功")
+            if d["type"] == "margin":
+                account_id = d['id']
+                if d['state'] == "working":
+                    self.gateway.write_log(f"Margin account {account_id} success")
+                else:
+                    self.gateway.write_log(f"Margin account {account_id} failure")
+            if d["type"] == "otc":
+                account_id = d['id']
+                if d['state'] == "working":
+                    self.gateway.write_log(f"OTC account {account_id} success")
+                else:
+                    self.gateway.write_log(f"OTC account {account_id} failure")
+            if d["type"] == "point":
+                account_id = d['id']
+                if d['state'] == "working":
+                    self.gateway.write_log(f"Point account {account_id} success")
+                else:
+                    self.gateway.write_log(f"OTC account {account_id} failure")
 
     def on_query_order(self, data: dict, request: Request) -> None:
         """"""
