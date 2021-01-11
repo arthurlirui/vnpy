@@ -121,14 +121,15 @@ class MarketEventData(BaseData):
 
 class DistData(BaseData):
     """
-    Price distribution of single vline
+    Price distribution of ticks
     """
-    def __init__(self,
+    def __init__(self, bin_size=1.0,
                  symbol: str = 'BTCUSDT',
                  exchange: Exchange = Exchange.HUOBI,
                  gateway_name: str = None,
                  open_time: datetime = None,
                  close_time: datetime = None):
+        self.bin_size = bin_size
         self.symbol = symbol
         self.exchange = exchange
         self.gateway_name = gateway_name
@@ -139,7 +140,8 @@ class DistData(BaseData):
 
     def add_tick(self, tick: TickData):
         if self.symbol == tick.symbol and self.exchange == tick.exchange:
-            key = int(tick.last_price)
+            #key = int(tick.last_price)
+            key = int(tick.last_price/self.bin_size)
             vol = tick.last_volume
             self.volume += vol
             if key in self.dist:
@@ -148,6 +150,7 @@ class DistData(BaseData):
                 self.dist[key] = vol
 
     def init_by_dist(self, dist):
+        self.bin_size = dist.bin_size
         self.symbol = dist.symbol
         self.exchange = dist.exchange
         self.gateway_name = dist.gateway_name
@@ -156,7 +159,7 @@ class DistData(BaseData):
         self.dist = dist.dist.copy()
         self.volume = dist.volume
 
-    def calc_dist(self, ticks: list):
+    def calc_dist(self, ticks: list = []):
         t0 = ticks[0]
         tend = ticks[-1]
         self.symbol = t0.symbol
@@ -167,7 +170,7 @@ class DistData(BaseData):
         dist = {}
         total_vol = 0
         for t in ticks:
-            key = int(t.last_price)
+            key = int(t.last_price/self.bin_size)
             vol = t.last_volume
             total_vol += vol
             if key in dist:
@@ -177,10 +180,10 @@ class DistData(BaseData):
         self.dist = dist
         self.volume = total_vol
 
-    def calc_teeterboard(self, ticks, avg_price):
-        func = lambda t, v: ((t.last_price-v)/v)*t.last_volume
-        weight = sum([func(t, avg_price) for t in ticks])
-        return weight
+    # def calc_teeterboard(self, ticks, avg_price):
+    #     # func = lambda t, v: ((t.last_price-v)/v)*t.last_volume
+    #     weight = sum([func(t, avg_price) for t in ticks])
+    #     return weight
 
     def total_vol(self):
         if self.volume <= 0:
@@ -294,8 +297,8 @@ class VlineData(BaseData):
     avg_price: float = 0
     ticks = []
 
-    def __init__(self):
-        self.ticks = []
+    #def __init__(self):
+    #    self.ticks = []
 
     def __post_init__(self):
         """"""
