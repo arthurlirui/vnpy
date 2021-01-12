@@ -432,6 +432,7 @@ class VlineData(BaseData):
         self.vt_symbol = f"{self.symbol}.{self.exchange.value}"
 
         self.ticks = vline.ticks.copy()
+        self.trades = vline.trades.copy()
 
     def add_tick(self, tick: TickData):
         if self.symbol == tick.symbol and self.exchange == tick.exchange:

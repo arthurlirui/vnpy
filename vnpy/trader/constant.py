@@ -41,6 +41,9 @@ class MarketAction(Enum):
     AUTO_BID = "定投买"
     AUTO_ASK = "定投卖"
 
+    HUNTING = "低吸"
+    HIGH_THROW = "高抛"
+
     BOTTOM_FISHING = "抄底"
     TOP_ESCAPE = "逃顶"
 
