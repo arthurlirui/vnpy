@@ -130,7 +130,7 @@ class HuobiGateway(BaseGateway):
 
         self.orders: Dict[str, OrderData] = {}
 
-    def get_summary(self):
+    def get_market_status(self):
         return self
 
     def get_order(self, orderid: str) -> OrderData:
@@ -270,6 +270,7 @@ class HuobiRestApi(RestClient):
         self.query_contract()
         self.query_account()
         self.query_order()
+        self.query_market_status()
 
     def query_market_status(self):
         self.add_request(
@@ -277,7 +278,6 @@ class HuobiRestApi(RestClient):
             path="/v2/market-status",
             callback=self.on_query_market_status
         )
-        #"https://status.huobigroup.com/api/v2/summary.json"
 
     def query_account(self) -> None:
         """"""
@@ -400,8 +400,26 @@ class HuobiRestApi(RestClient):
             extra=req
         )
 
-    def on_query_market_status(self):
-        pass
+    def on_query_market_status(self, data: dict, request: Request):
+        """"""
+        # 市场状态（1=normal, 2=halted, 3=cancel-only）
+        #print(data)
+        market_status = data["data"]["marketStatus"]
+        if market_status == 1:
+            self.gateway.write_log(f"Market Status: normal")
+        elif market_status == 2:
+            self.gateway.write_log(f"Market Status: halted")
+        elif market_status == 3:
+            self.gateway.write_log(f"Market Status: cancel-only")
+        '''
+        {
+            "code": 200,
+            "message": "success",
+            "data": {
+                "marketStatus": 1
+            }
+        }
+        '''
 
     def on_query_account(self, data: dict, request: Request) -> None:
         """"""
