@@ -418,8 +418,10 @@ class VlineGenerator:
         self.vol: float = vol
 
         self.last_tick: TickData = None
-        self.last_vline: VlineData = VlineData()
-        self.last_dist: DistData = DistData()
+        self.last_trade: TradeData = None
+        self.last_vline: VlineData = None
+        self.last_dist: DistData = None
+
         self.dist: DistData = DistData()
 
         self.all_dist: DistData = DistData()
@@ -432,6 +434,48 @@ class VlineGenerator:
         self.vlines = []
         self.dists = []
         self.teeter_signals = []
+
+    def update_market_trades(self, trade: TradeData) -> None:
+        new_vline = False
+
+        # filter trade data with 0 volume
+        #if trade.volume <= 0:
+        #    return
+
+        # filter trade data with older timestamp
+        if self.last_trade and trade.datetime < self.last_trade.datetime:
+            return
+
+        # filter trade data with different vt_symbol
+        if self.last_trade and trade.vt_symbol != self.last_trade.vt_symbol:
+            return
+
+        if self.vline.is_empty():
+            new_vline = True
+        elif self.vline.volume > self.vol:
+            self.on_vline(self.vline)
+
+            # update vline for multiple vlines
+            self.update_vline(vline=self.vline)
+
+            # update dist
+            self.update_dist(dist=self.dist)
+            new_vline = True
+        else:
+            new_vline = False
+
+        if new_vline:
+            # init empty vline here
+            self.vline = VlineData()
+            self.vline.init_by_trade(trade)
+
+            self.dist = DistData()
+            self.dist.calc_dist_trades(self.vline.trades)
+        else:
+            self.vline.add_trade(trade)
+            self.dist.add_trade(trade)
+
+        self.last_trade = trade
 
     def update_tick(self, tick: TickData) -> None:
         """
@@ -455,7 +499,6 @@ class VlineGenerator:
             new_vline = True
         elif self.vline.volume > self.vol:
             self.on_vline(self.vline)
-            print('New:', self.vline)
             # update vline for multiple vlines
             self.update_vline(vline=self.vline)
 
@@ -474,6 +517,154 @@ class VlineGenerator:
             self.vline.add_tick(tick)
             self.dist.add_tick(tick)
 
+        self.last_tick = tick
+
+    def multi_vline_setting(self, on_multi_vline: Callable, vol_list=[10, 20, 40]):
+        '''
+        setting multiple vlines
+        :return:
+        '''
+        self.vol_list = vol_list
+        self.on_multi_vline = on_multi_vline
+
+        # multi vline buffer
+        self.vline_buf = {}
+        self.dist_buf = {}
+        for v in self.vol_list:
+            self.vline_buf[v] = VlineData()
+            self.dist_buf[v] = DistData()
+
+    def update_vline(self, vline: VlineData) -> None:
+        """
+        Update new vline data into generator.
+        """
+        # 1. process None last tick and None last vline
+        # 2. update last vline for each trade
+        # 3. check volume to update other all vline in list
+        self.vlines.append(vline)
+        for v in self.vol_list:
+            n = round(v / self.vol)
+            vn = self.vlines[-n:]
+            for i, d in enumerate(vn):
+                if i == 0:
+                    self.vline_buf[v].init_by_vline(vline=d)
+                else:
+                    self.vline_buf[v] = self.vline_buf[v] + d
+
+    def update_dist(self, dist: DistData):
+        self.dists.append(dist)
+        for v in self.vol_list:
+            n = round(v / self.vol)
+            dn = self.dists[-n:]
+            for i, d in enumerate(dn):
+                if i == 0:
+                    self.dist_buf[v].init_by_dist(d)
+                else:
+                    self.dist_buf[v] = self.dist_buf[v] + d
+
+    def generate(self) -> None:
+        """
+        Generate the bar data and call callback immediately.
+        """
+        bar = self.bar
+
+        if self.bar:
+            bar.datetime = bar.datetime.replace(second=0, microsecond=0)
+            self.on_bar(bar)
+
+        self.bar = None
+        return bar
+
+
+class DistGenerator:
+    '''
+    For
+    1. generate and update dist by tick data
+    '''
+    def __init__(self, on_dist: Callable, vol: float = 1.0):
+        pass
+
+    def update_tick(self, tick: TickData):
+        pass
+
+
+class SimpleVlineGenerator:
+    '''
+    For
+    1. Generate 1 volume vline from tick data
+    2. Merge vol_list volume size for vline
+    '''
+    def __init__(
+        self,
+        on_vline: Callable,
+        vol: float = 1.0,
+    ):
+        """Constructor"""
+        self.vline: VlineData = VlineData()
+        self.dist: DistData = DistData()
+        self.on_vline: Callable = on_vline
+        self.vol: float = vol
+
+        self.ticks = []
+        self.vlines = []
+        self.dists = []
+        self.last_tick = None
+
+        # self.last_tick: TickData = None
+        # self.last_vline: VlineData = VlineData()
+        # self.last_dist: DistData = DistData()
+        # self.dist: DistData = DistData()
+        #
+        # self.all_dist: DistData = DistData()
+        # self.last_teeter_signal = 0.0
+        #
+        # # buffer for saving ticks in vline
+        # self.ticks = []
+        #
+        # # all running vline, dist, and teeter_signal
+        # self.vlines = []
+        # self.dists = []
+        # self.teeter_signals = []
+
+    def update_tick(self, tick: TickData) -> None:
+        """
+        Update new tick data into generator.
+        1. udpate vline
+        2. update dist for each vline
+        3. update long term tick
+        """
+        new_vline = False
+
+        # Filter tick data with 0 last price
+        if not tick.last_price:
+            return
+
+        # Filter tick data with older timestamp
+        if self.last_tick and tick.datetime < self.last_tick.datetime:
+            return
+
+        if self.vline.is_empty():
+            new_vline = True
+        if self.vline.volume > self.vol:
+            self.on_vline(self.vline)
+
+            # update vline
+            self.update_vline(vline=self.vline)
+
+            # update dist
+            self.update_dist(dist=self.dist)
+            new_vline = True
+
+        if new_vline:
+            # init empty vline here
+            self.vline = VlineData()
+            self.vline.init_by_tick(tick)
+
+            self.dist = DistData()
+            self.dist.calc_dist(self.vline.ticks)
+        else:
+            self.vline.add_tick(tick)
+            self.dist.add_tick(tick)
         self.last_tick = tick
 
     def multi_vline_setting(self, on_multi_vline, vol_list=[10, 20, 40]):
