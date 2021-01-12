@@ -79,7 +79,7 @@ class TickData(BaseData):
         self.vt_symbol = f"{self.symbol}.{self.exchange.value}"
 
     def __str__(self):
-        return '%s P:%.3f V:%.3f %s %s' % (self.symbol, self.last_price, self.last_volume, self.exchange, self.datetime)
+        return '%s P:%.3f V:%.8f %s %s' % (self.symbol, self.last_price, self.last_volume, self.exchange, self.datetime)
 
 
 class MarketEventData(BaseData):
@@ -137,12 +137,23 @@ class DistData(BaseData):
         self.close_time = close_time
         self.dist = {}
         self.volume = 0
+        self.vt_symbol = f"{self.symbol}.{self.exchange.value}"
 
     def add_tick(self, tick: TickData):
         if self.symbol == tick.symbol and self.exchange == tick.exchange:
             #key = int(tick.last_price)
             key = int(tick.last_price/self.bin_size)
             vol = tick.last_volume
+            self.volume += vol
+            if key in self.dist:
+                self.dist[key] += vol
+            else:
+                self.dist[key] = vol
+
+    def add_trade(self, trade):
+        if self.vt_symbol == trade.vt_symbol:
+            key = int(trade.price/self.bin_size)
+            vol = trade.volume
             self.volume += vol
             if key in self.dist:
                 self.dist[key] += vol
@@ -172,6 +183,27 @@ class DistData(BaseData):
         for t in ticks:
             key = int(t.last_price/self.bin_size)
             vol = t.last_volume
+            total_vol += vol
+            if key in dist:
+                dist[key] += vol
+            else:
+                dist[key] = vol
+        self.dist = dist
+        self.volume = total_vol
+
+    def calc_dist_trades(self, trades: list = []):
+        t0 = trades[0]
+        tend = trades[-1]
+        self.symbol = t0.symbol
+        self.exchange = t0.exchange
+        self.gateway_name = t0.gateway_name
+        self.open_time = t0.datetime
+        self.close_time = tend.datetime
+        dist = {}
+        total_vol = 0
+        for t in trades:
+            key = int(t.price/self.bin_size)
+            vol = t.volume
             total_vol += vol
             if key in dist:
                 dist[key] += vol
@@ -276,7 +308,36 @@ class BarData(BaseData):
         return False
 
 
-@dataclass(init=True)
+@dataclass
+class TradeData(BaseData):
+    """
+    Trade data contains information of a fill of an order. One order
+    can have several trade fills.
+    """
+
+    symbol: str
+    exchange: Exchange
+    orderid: str
+    tradeid: str
+    direction: Direction = None
+
+    offset: Offset = Offset.NONE
+    price: float = 0
+    volume: float = 0
+    datetime: datetime = None
+
+    def __post_init__(self):
+        """"""
+        self.vt_symbol = f"{self.symbol}.{self.exchange.value}"
+        self.vt_orderid = f"{self.gateway_name}.{self.orderid}"
+        self.vt_tradeid = f"{self.gateway_name}.{self.tradeid}"
+
+    def __str__(self):
+        pstr = f"{self.vt_symbol} {self.price} {self.volume} {self.direction.value} {self.datetime}"
+        return pstr
+
+
+@dataclass
 class VlineData(BaseData):
     """
     Candlestick vline data of a certain trading volume.
@@ -296,9 +357,7 @@ class VlineData(BaseData):
     close_price: float = None
     avg_price: float = 0
     ticks = []
-
-    #def __init__(self):
-    #    self.ticks = []
+    trades = []
 
     def __post_init__(self):
         """"""
@@ -338,6 +397,24 @@ class VlineData(BaseData):
 
         self.ticks.append(tick)
 
+    def init_by_trade(self, trade: TradeData):
+        self.symbol = trade.symbol
+        self.exchange = trade.exchange
+        self.open_time = trade.datetime
+        self.close_time = trade.datetime
+
+        self.volume = trade.volume
+        self.avg_price = trade.price
+        self.open_price = trade.price
+        self.close_price = trade.price
+        self.high_price = trade.price
+        self.low_price = trade.price
+        self.gateway_name = trade.gateway_name
+
+        self.vt_symbol = f"{self.symbol}.{self.exchange.value}"
+
+        self.trades.append(trade)
+
     def init_by_vline(self, vline):
         self.symbol = vline.symbol
         self.exchange = vline.exchange
@@ -351,6 +428,8 @@ class VlineData(BaseData):
         self.high_price = vline.high_price
         self.low_price = vline.low_price
         self.gateway_name = vline.gateway_name
+
+        self.vt_symbol = f"{self.symbol}.{self.exchange.value}"
 
         self.ticks = vline.ticks.copy()
 
@@ -382,6 +461,32 @@ class VlineData(BaseData):
                     self.low_price = min(self.low_price, tick.last_price)
                 self.ticks.append(tick)
 
+    def add_trade(self, trade: TradeData):
+        if self.symbol == trade.symbol and self.exchange == trade.exchange:
+            if self.open_time <= trade.datetime and self.close_time <= trade.datetime:
+                self.close_time = trade.datetime
+                sum_vol_price = self.avg_price * self.volume
+                sum_vol_price = sum_vol_price + trade.price * trade.volume
+                self.volume = self.volume + trade.volume
+
+                self.avg_price = sum_vol_price / self.volume
+
+                if not self.open_price:
+                    self.open_price = trade.price
+
+                self.close_price = trade.price
+
+                if not self.high_price:
+                    self.high_price = trade.price
+                else:
+                    self.high_price = max(self.high_price, trade.price)
+
+                if not self.low_price:
+                    self.low_price = trade.price
+                else:
+                    self.low_price = min(self.low_price, trade.price)
+                self.trades.append(trade)
+
     def is_empty(self):
         if self.volume <= 0:
             return True
@@ -396,7 +501,7 @@ class VlineData(BaseData):
         return False
 
     def __str__(self):
-        return '%s P:%.3f O:%.3f C:%.3f H:%.3f L:%.3f V:%.3f %s OT:%s CT:%s' % (self.symbol, self.avg_price,
+        return '%s P:%.3f O:%.3f C:%.3f H:%.3f L:%.3f V:%.8f %s OT:%s CT:%s' % (self.symbol, self.avg_price,
                                                                                 self.open_price, self.close_price,
                                                                                 self.high_price, self.low_price,
                                                                                 self.volume,
@@ -446,31 +551,6 @@ class OrderData(BaseData):
             orderid=self.orderid, symbol=self.symbol, exchange=self.exchange
         )
         return req
-
-
-@dataclass
-class TradeData(BaseData):
-    """
-    Trade data contains information of a fill of an order. One order
-    can have several trade fills.
-    """
-
-    symbol: str
-    exchange: Exchange
-    orderid: str
-    tradeid: str
-    direction: Direction = None
-
-    offset: Offset = Offset.NONE
-    price: float = 0
-    volume: float = 0
-    datetime: datetime = None
-
-    def __post_init__(self):
-        """"""
-        self.vt_symbol = f"{self.symbol}.{self.exchange.value}"
-        self.vt_orderid = f"{self.gateway_name}.{self.orderid}"
-        self.vt_tradeid = f"{self.gateway_name}.{self.tradeid}"
 
 
 @dataclass
