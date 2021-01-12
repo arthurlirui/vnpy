@@ -612,18 +612,92 @@ class VlineGenerator:
         #         else:
         #             self.dist_buf[v] = self.dist_buf[v] + d
 
-    def generate(self) -> None:
-        """
-        Generate the bar data and call callback immediately.
-        """
-        bar = self.bar
 
-        if self.bar:
-            bar.datetime = bar.datetime.replace(second=0, microsecond=0)
-            self.on_bar(bar)
+class VlineQueueGenerator:
+    '''
+    For
+    1. Generate several vline from trade data
+    '''
+    def __init__(self, vol_list: list = [], bin_size: float = 1.0, save_data: bool = False):
+        """Constructor"""
+        self.vol_list = vol_list
+        self.bin_size = bin_size
+        self.save_data = save_data
 
-        self.bar = None
-        return bar
+        self.vq = {}
+        for vol in self.vol_list:
+            self.vq[vol] = VlineQueue(max_vol=vol, bin_size=self.bin_size, save_trade=self.save_data)
+        self.last_trade = None
+
+    def check_valid(self, trade: TradeData) -> bool:
+        is_valid = True
+        # filter trade data with 0 volume
+        if trade.volume <= 0:
+            is_valid = False
+        # filter trade data with older timestamp
+        if self.last_trade and trade.datetime < self.last_trade.datetime:
+            is_valid = False
+        # filter trade data with different vt_symbol
+        if self.last_trade and trade.vt_symbol != self.last_trade.vt_symbol:
+            is_valid = False
+        return is_valid
+
+    def update_market_trades(self, trade: TradeData) -> None:
+        if not self.check_valid(trade=trade):
+            return
+
+        # for each different volume vline
+        for vol in self.vol_list:
+            self.vq[vol].update_trade(trade=trade)
+
+
+class VlineQueue:
+    def __init__(self, max_vol: float = 10.0, bin_size: float = 1.0, save_trade: bool = True):
+        self.max_vol = max_vol
+        self.bin_size = bin_size
+        self.save_trade = save_trade
+        self.trades = []
+        self.vol = 0
+        self.dist = {}
+        self.last_trade = None
+
+    def update_trade(self, trade: TradeData):
+        self.last_trade = trade
+        self.push(trade=trade)
+        while self.size() > self.max_vol:
+            self.pop()
+
+    def push(self, trade: TradeData):
+        if self.save_trade:
+            self.trades.append(trade)
+        self.vol = self.vol + trade.volume
+        self.push_dist(trade=trade)
+
+    def pop(self) -> TradeData:
+        if len(self.trades) > 0:
+            t0 = self.trades[0]
+            if self.save_trade and len(self.trades) > 0:
+                self.trades.pop(0)
+            self.vol = self.vol - t0.volume
+            self.pop_dist(trade=t0)
+            return t0
+        else:
+            return None
+
+    def push_dist(self, trade: TradeData):
+        price_key = int(trade.price/self.bin_size)
+        if price_key in self.dist:
+            self.dist[price_key] += trade.volume
+        else:
+            self.dist[price_key] = trade.volume
+
+    def pop_dist(self, trade: TradeData):
+        price_key = int(trade.price/self.bin_size)
+        if price_key in self.dist:
+            self.dist[price_key] -= trade.volume
+
+    def size(self):
+        return self.vol
 
 
 class DistGenerator:
