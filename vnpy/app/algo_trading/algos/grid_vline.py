@@ -73,10 +73,11 @@ class GridVline(AlgoTemplate):
         self.pos = 0
         self.last_tick = None
 
-        # init all market data
-        for s in self.symbols:
-            for ex in self.exchanges:
-                self.subscribe(s+'.'+ex)
+        if False:
+            # init all market data
+            for s in self.symbols:
+                for ex in self.exchanges:
+                    self.subscribe(s+'.'+ex)
 
         # init vline generator
         if False:
@@ -84,9 +85,12 @@ class GridVline(AlgoTemplate):
             self.vline_buf = {}
             self.init_vline_generator()
 
-        if True:
+        if False:
             self.vqg = {}
             self.init_vline_queue_generator()
+
+        if True:
+            pass
 
         # inti market event generator
         #self.meg = None
@@ -106,6 +110,9 @@ class GridVline(AlgoTemplate):
         # init local balance and order from market
         self.put_parameters_event()
         self.put_variables_event()
+
+    def init_data(self):
+        pass
 
     def init_setting(self, setting: dict = {}):
         for key in setting:

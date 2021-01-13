@@ -303,6 +303,9 @@ class HuobiRestApi(RestClient):
             callback=self.on_query_contract
         )
 
+    def query_trade(self, req: TradeRequest) -> List[TradeData]:
+        pass
+
     def query_history(self, req: HistoryRequest) -> List[BarData]:
         """"""
         # Create query params
