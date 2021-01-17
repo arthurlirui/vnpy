@@ -303,8 +303,22 @@ class HuobiRestApi(RestClient):
             callback=self.on_query_contract
         )
 
-    def query_trade(self, req: TradeRequest) -> List[TradeData]:
-        pass
+    def query_trade(self, req) -> List[TradeData]:
+        '''
+        Author: Arthur
+        :param req:
+        :return:
+        '''
+        params = {
+            "symbol": req.symbol,
+            "size": 2000
+        }
+        self.add_request(
+            method="GET",
+            path="/market/history/trade",
+            callback=self.on_query_trade,
+            params=params
+        )
 
     def query_history(self, req: HistoryRequest) -> List[BarData]:
         """"""
@@ -406,7 +420,6 @@ class HuobiRestApi(RestClient):
     def on_query_market_status(self, data: dict, request: Request):
         """"""
         # 市场状态（1=normal, 2=halted, 3=cancel-only）
-        #print(data)
         market_status = data["data"]["marketStatus"]
         if market_status == 1:
             self.gateway.write_log(f"Market Status: normal")
@@ -763,11 +776,14 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
         currency = data["currency"]
 
         change_type = data["changeType"]
+        #print(data)
         if not change_type:
             balance = float(data["balance"])
-            frozen = balance - float(data["available"])
+            if data["available"]:
+                frozen = balance - float(data["available"])
+            else:
+                frozen = 0.0
             currency_balance[currency] = balance
-
         elif "place" in change_type:
             if "available" not in data:
                 return
