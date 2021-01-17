@@ -26,7 +26,8 @@ from vnpy.trader.event import (
     EVENT_TICK,
     EVENT_ORDER,
     EVENT_TRADE,
-    EVENT_POSITION
+    EVENT_POSITION,
+    EVENT_MARKET_TRADE
 )
 from vnpy.trader.constant import (
     Direction,
@@ -74,8 +75,7 @@ class CtaEngine(BaseEngine):
 
     def __init__(self, main_engine: MainEngine, event_engine: EventEngine):
         """"""
-        super(CtaEngine, self).__init__(
-            main_engine, event_engine, APP_NAME)
+        super(CtaEngine, self).__init__(main_engine, event_engine, APP_NAME)
 
         self.strategy_setting = {}  # strategy_name: dict
         self.strategy_data = {}     # strategy_name: dict
@@ -121,6 +121,7 @@ class CtaEngine(BaseEngine):
         self.event_engine.register(EVENT_ORDER, self.process_order_event)
         self.event_engine.register(EVENT_TRADE, self.process_trade_event)
         self.event_engine.register(EVENT_POSITION, self.process_position_event)
+        self.event_engine.register(EVENT_MARKET_TRADE, self.process_market_trade_event)
 
     def init_rqdata(self):
         """
@@ -145,6 +146,21 @@ class CtaEngine(BaseEngine):
         )
         data = rqdata_client.query_history(req)
         return data
+
+    def process_market_trade_event(self, event: Event):
+        market_trade = event.data
+        strategies = self.symbol_strategy_map.get(market_trade.vt_symbol, None)
+
+        if not strategies:
+            return
+
+        for strategy in strategies:
+            if strategy.inited:
+                self.call_strategy_func(strategy, strategy.on_market_trade, market_trade)
+
+        #if strategy:
+            #for stra in self.strategies:
+                #stra.update_market_trade(market_trade)
 
     def process_tick_event(self, event: Event):
         """"""
