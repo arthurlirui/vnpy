@@ -667,6 +667,13 @@ class VlineQueue:
         while self.size() > self.max_vol:
             self.pop()
 
+    def update_kline(self, bar: BarData):
+        trade = bar2trade(bar)
+        self.last_trade = trade
+        self.push(trade=trade)
+        while self.size() > self.max_vol:
+            self.pop()
+
     def push(self, trade: TradeData):
         if self.save_trade:
             self.trades.append(trade)
@@ -1524,3 +1531,15 @@ def get_file_logger(filename: str) -> logging.Logger:
     handler.setFormatter(log_formatter)
     logger.addHandler(handler)  # each handler will be added only once.
     return logger
+
+
+def bar2trade(self, bar: BarData) -> TradeData:
+    trade = TradeData()
+    trade.vt_symbol = bar.vt_symbol
+    trade.symbol = bar.symbol
+    trade.exchange = bar.exchange
+    trade.datetime = bar.datetime
+    trade.volume = bar.volume
+    trade.price = 0.25 * (bar.open_price + bar.close_price + bar.high_price + bar.close_price)
+    trade.gateway_name = bar.gateway_name
+    return trade
