@@ -641,7 +641,7 @@ class SpreadStrategyEngine:
 
     def load_strategy_class_from_module(self, module_name: str):
         """
-        Load strategy class from module file.
+        Load strategy class from module_bak file.
         """
         try:
             module = importlib.import_module(module_name)

@@ -40,7 +40,8 @@ from vnpy.gateway.huobi import HuobiGateway
 # from vnpy.app.cta_strategy import CtaStrategyApp
 # from vnpy.app.csv_loader import CsvLoaderApp
 from vnpy.app.algo_trading import AlgoTradingApp
-# from vnpy.app.cta_backtester import CtaBacktesterApp
+from vnpy.app.cta_backtester import CtaBacktesterApp
+from vnpy.app.cta_strategy import CtaStrategyApp
 # from vnpy.app.data_recorder import DataRecorderApp
 # from vnpy.app.risk_manager import RiskManagerApp
 # from vnpy.app.script_trader import ScriptTraderApp
@@ -95,8 +96,8 @@ def main():
     # main_engine.add_gateway(OkexoGateway)
     # main_engine.add_gateway(BinancefGateway)
 
-    # main_engine.add_app(CtaStrategyApp)
-    # main_engine.add_app(CtaBacktesterApp)
+    main_engine.add_app(CtaStrategyApp)
+    main_engine.add_app(CtaBacktesterApp)
     # main_engine.add_app(CsvLoaderApp)
     main_engine.add_app(AlgoTradingApp)
     # main_engine.add_app(DataRecorderApp)

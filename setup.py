@@ -25,7 +25,7 @@ from setuptools import Extension, find_packages, setup
 
 
 def gather_autocxxpy_generated_files(root: str):
-    fs = [os.path.join(root, "module.cpp")]
+    fs = [os.path.join(root, "module_bak.cpp")]
     for root, dirs, filenames in os.walk(root):
         for filename in filenames:
             filebase, ext = os.path.splitext(filename)

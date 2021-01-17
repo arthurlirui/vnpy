@@ -17,7 +17,7 @@ from vnpy.trader.ui import MainWindow, create_qapp
 # from vnpy.gateway.tiger import TigerGateway
 # from vnpy.gateway.oes import OesGateway
 # from vnpy.gateway.okex import OkexGateway
-# from vnpy.gateway.huobi import HuobiGateway
+from vnpy.gateway.huobi import HuobiGateway
 # from vnpy.gateway.bitfinex import BitfinexGateway
 # from vnpy.gateway.onetoken import OnetokenGateway
 # from vnpy.gateway.okexf import OkexfGateway
@@ -69,20 +69,20 @@ def main():
     # main_engine.add_gateway(SoptGateway)
     # main_engine.add_gateway(MinitestGateway)
     # main_engine.add_gateway(FemasGateway)
-    main_engine.add_gateway(UftGateway)
+    #main_engine.add_gateway(UftGateway)
     # main_engine.add_gateway(IbGateway)
     # main_engine.add_gateway(FutuGateway)
     # main_engine.add_gateway(BitmexGateway)
     # main_engine.add_gateway(TigerGateway)
     # main_engine.add_gateway(OesGateway)
     # main_engine.add_gateway(OkexGateway)
-    # main_engine.add_gateway(HuobiGateway)
+    main_engine.add_gateway(HuobiGateway)
     # main_engine.add_gateway(BitfinexGateway)
     # main_engine.add_gateway(OnetokenGateway)
     # main_engine.add_gateway(OkexfGateway)
     # main_engine.add_gateway(HuobifGateway)
-    main_engine.add_gateway(XtpGateway)
-    main_engine.add_gateway(TapGateway)
+    #main_engine.add_gateway(XtpGateway)
+    #main_engine.add_gateway(TapGateway)
     # main_engine.add_gateway(ToraGateway)
     # main_engine.add_gateway(AlpacaGateway)
     # main_engine.add_gateway(OkexsGateway)
@@ -98,7 +98,7 @@ def main():
     # main_engine.add_app(CtaStrategyApp)
     # main_engine.add_app(CtaBacktesterApp)
     # main_engine.add_app(CsvLoaderApp)
-    # main_engine.add_app(AlgoTradingApp)
+    main_engine.add_app(AlgoTradingApp)
     # main_engine.add_app(DataRecorderApp)
     # main_engine.add_app(RiskManagerApp)
     # main_engine.add_app(ScriptTraderApp)
@@ -109,12 +109,17 @@ def main():
     # main_engine.add_app(ChartWizardApp)
     # main_engine.add_app(ExcelRtdApp)
     # main_engine.add_app(DataManagerApp)
-    main_engine.add_app(PortfolioStrategyApp)
+    #main_engine.add_app(PortfolioStrategyApp)
     
     main_window = MainWindow(main_engine, event_engine)
     main_window.showMaximized()
 
     qapp.exec()
+
+def test_cmd():
+    event_engine = EventEngine()
+    main_engine = MainEngine(event_engine)
+    main_engine.add_gateway(HuobiGateway)
 
 
 if __name__ == "__main__":

@@ -9,7 +9,7 @@ if typing.TYPE_CHECKING:
 
 def set_async_callback_exception_handler(handler: Callable[[AsyncDispatchException], None]):
     """
-    set a customize exception handler for async callback in this module(pyd)
+    set a customize exception handler for async callback in this module_bak(pyd)
     \a handler should return True if it handles that exception,
 
     :note: If the return value of \a handler is not True, exception will be re-thrown.

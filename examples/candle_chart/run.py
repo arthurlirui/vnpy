@@ -8,9 +8,17 @@ from vnpy.chart import ChartWidget, VolumeItem, CandleItem
 if __name__ == "__main__":
     app = create_qapp()
 
+    # bars = database_manager.load_bar_data(
+    #     "IF888",
+    #     Exchange.CFFEX,
+    #     interval=Interval.MINUTE,
+    #     start=datetime(2019, 7, 1),
+    #     end=datetime(2019, 7, 17)
+    # )
+
     bars = database_manager.load_bar_data(
-        "IF888",
-        Exchange.CFFEX,
+        "btcusdt",
+        Exchange.HUOBI,
         interval=Interval.MINUTE,
         start=datetime(2019, 7, 1),
         end=datetime(2019, 7, 17)

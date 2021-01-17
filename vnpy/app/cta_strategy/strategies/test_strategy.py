@@ -94,8 +94,7 @@ class TestStrategy(CtaTemplate):
     def init_vline_generator(self):
         # init vline
         self.vg = VlineGenerator(on_vline=self.on_vline, vol=self.vline_vol)
-        self.vg.multi_vline_setting(on_multi_vline=self.on_multi_vline,
-                                    vol_list=self.vline_vol_list)
+        self.vg.multi_vline_setting(on_multi_vline=self.on_multi_vline, vol_list=self.vline_vol_list)
 
         # light copy of vline_buf from vline generator
         self.last_vline = self.vg.vline

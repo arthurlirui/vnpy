@@ -6,6 +6,7 @@ from vnpy.app.algo_trading import AlgoTemplate
 import math
 from vnpy.trader.utility import VlineGenerator, MarketEventGenerator, VlineQueueGenerator
 from pprint import pprint
+from vnpy.trader.object import HistoryRequest
 
 
 class GridVline(AlgoTemplate):
@@ -112,7 +113,11 @@ class GridVline(AlgoTemplate):
         self.put_variables_event()
 
     def init_data(self):
-        pass
+        '''
+        init vline by loading history data from market
+        :return:
+        '''
+
 
     def init_setting(self, setting: dict = {}):
         for key in setting:
@@ -198,6 +203,9 @@ class GridVline(AlgoTemplate):
                     #print(vb, len(self.vqg[trade.vt_symbol].vlines[vb]), self.vqg[trade.vt_symbol].vline_buf[vb])
                     #print(f'Size:{len(self.vg[trade.vt_symbol].vlines[vb])} Vol:{vb}')
             print()
+
+    def on_kline(self, bar: BarData):
+        self.vqg[bar.vt_symbol].update_kline(bar=bar)
 
     def on_vline(self, vline: VlineData, vol: int):
         '''
