@@ -75,6 +75,8 @@ class GridVline(CtaTemplate):
         """"""
         super(GridVline, self).__init__(cta_engine, strategy_name, vt_symbol, setting)
 
+        self.symbols = ['btcusdt', 'ethusdt']
+        self.exchanges = ['HUOBI']
 
 
         # init setting
@@ -104,7 +106,7 @@ class GridVline(CtaTemplate):
             self.vline_buf = {}
             self.init_vline_generator()
 
-        if False:
+        if True:
             self.vqg = {}
             self.init_vline_queue_generator()
 
@@ -182,7 +184,7 @@ class GridVline(CtaTemplate):
         for s in self.symbols:
             for ex in self.exchanges:
                 vt_sym = s + '.' + ex
-                vline_vol = self.market_params[s]['vline_vol']
+                #vline_vol = self.market_params[s]['vline_vol']
                 vline_vol_list = self.market_params[s]['vline_vol_list']
                 bin_size = self.market_params[s]['bin_size']
                 self.vqg[vt_sym] = VlineQueueGenerator(vol_list=vline_vol_list, bin_size=bin_size, save_data=True)
@@ -219,6 +221,7 @@ class GridVline(CtaTemplate):
             return
 
         # update tick
+        print(tick)
         self.last_tick = tick
 
         # update vline for different pairs
