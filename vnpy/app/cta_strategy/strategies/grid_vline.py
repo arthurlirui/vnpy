@@ -8,8 +8,19 @@ from vnpy.trader.utility import VlineGenerator, MarketEventGenerator, VlineQueue
 from pprint import pprint
 from vnpy.trader.object import HistoryRequest
 
+from vnpy.app.cta_strategy import (
+    CtaTemplate,
+    StopOrder,
+    TickData,
+    BarData,
+    TradeData,
+    OrderData,
+    BarGenerator,
+    ArrayManager,
+)
 
-class GridVline(AlgoTemplate):
+
+class GridVline(CtaTemplate):
     """"""
     display_name = "Grid Vline - 网格v线"
     author = "Arthur"
@@ -22,57 +33,64 @@ class GridVline(AlgoTemplate):
         "test": 1000,
     }
 
-    variables = [
-        "pos",
-        "timer_count",
-        "vt_orderid"
-    ]
+    #variables = ["pos", "timer_count", "vt_orderid"]
+    variables = []
 
     usdt_vol_list = [10, 40, 160, 640, 2560, 10240, 40960]
     market_params = {'btcusdt': {'vline_vol': 10, 'vline_vol_list': usdt_vol_list, 'bin_size': 1.0},
                      'ethusdt': {'vline_vol': 10, 'vline_vol_list': usdt_vol_list, 'bin_size': 1.0}}
-    parameters = {'vline_vol': 10,
-                  'vline_vol_list': [40, 160, 640, 2560, 10240, 40960],
-                  'vt_symbol_list': ['btcusdt.HUOBI', 'ethusdt.HUOBI'],
-                  'symbols': ['btcusdt', 'ethusdt'],
-                  'exchanges': ['HUOBI'],
-                  'vline_min_num': 10,
-                  'vline_max_num': 1000,
-                  'ttb_min_num': 10,
-                  'first_symbol': 'BTC',
-                  'second_symbol': 'USDT',
-                  'min_trade_vol': 0.01,
-                  'max_trade_vol': 0.1,
-                  'total_position': 10,
-                  'position_step': 0.1,
-                  'min_position': 0.1,
-                  'max_position': 2,
-                  'init_position': 0,
-                  'position_constant_decrease': 0.01}
+
+    parameters = ['vline_vol', 'vline_num', 'vline_vol_list']
+    vline_vol = 10
+    vline_num = 5
+    vline_vol_list = [10, 40, 160, 640, 2560, 10240, 40960]
+    # variables = ['kk_up', 'kk_down']
+
+    # parameters = {'vline_vol': 10,
+    #               'vline_vol_list': [40, 160, 640, 2560, 10240, 40960],
+    #               'vt_symbol_list': ['btcusdt.HUOBI', 'ethusdt.HUOBI'],
+    #               'symbols': ['btcusdt', 'ethusdt'],
+    #               'exchanges': ['HUOBI'],
+    #               'vline_min_num': 10,
+    #               'vline_max_num': 1000,
+    #               'ttb_min_num': 10,
+    #               'first_symbol': 'BTC',
+    #               'second_symbol': 'USDT',
+    #               'min_trade_vol': 0.01,
+    #               'max_trade_vol': 0.1,
+    #               'total_position': 10,
+    #               'position_step': 0.1,
+    #               'min_position': 0.1,
+    #               'max_position': 2,
+    #               'init_position': 0,
+    #               'position_constant_decrease': 0.01}
 
     def __init__(
         self,
-        algo_engine: BaseEngine,
-        algo_name: str,
-        setting: dict
+        cta_engine,
+        strategy_name,
+        vt_symbol,
+        setting
     ):
         """"""
-        super().__init__(algo_engine, algo_name, setting)
+        super(GridVline, self).__init__(cta_engine, strategy_name, vt_symbol, setting)
+
+
 
         # init setting
-        pprint(setting)
-        self.init_setting(setting=setting)
+        #pprint(setting)
+        #self.init_setting(setting=setting)
 
         # init parameters
-        pprint(self.parameters)
+        #self.init_parameter(parameters=self.parameters)
         # could load parameters from xml files
-        self.init_parameter(parameters=self.parameters)
+        #self.init_parameter(parameters=self.parameters)
 
         # Variables
-        self.timer_count = 0
-        self.vt_orderid = ""
-        self.pos = 0
-        self.last_tick = None
+        #self.timer_count = 0
+        #self.vt_orderid = ""
+        #self.pos = 0
+        #self.last_tick = None
 
         if False:
             # init all market data
@@ -90,33 +108,51 @@ class GridVline(AlgoTemplate):
             self.vqg = {}
             self.init_vline_queue_generator()
 
-        if True:
-            pass
-
         # inti market event generator
         #self.meg = None
         #self.init_market_event_generator()
 
         # system variables
-        self.last_tick = None
-        self.last_vline = None
-        self.last_market_event = None
+        #self.last_tick = None
+        #self.last_vline = None
+        #self.last_market_event = None
 
         # cache data from market
-        self.ticks = []
-        self.vlines = []
-        self.market_events = []
+        #self.ticks = []
+        #self.vlines = []
+        #self.market_events = []
         #self.vline_len = 0
 
         # init local balance and order from market
-        self.put_parameters_event()
-        self.put_variables_event()
+        #self.put_parameters_event()
+        #self.put_variables_event()
+
+    def on_init(self):
+        """
+        Callback when strategy is inited.
+        """
+        self.write_log("策略初始化")
+        self.load_bar(10)
+
+    def on_start(self):
+        """
+        Callback when strategy is started.
+        """
+        self.write_log("策略启动")
+
+    def on_stop(self):
+        """
+        Callback when strategy is stopped.
+        """
+        self.write_log("策略停止")
+
+    def on_init(self):
+        self.init_data()
 
     def init_data(self):
         '''
         init vline by loading history data from market
         :return:
-        '''
         symbol: str
         exchange: Exchange
         start: datetime
@@ -126,7 +162,8 @@ class GridVline(AlgoTemplate):
         req = HistoryRequest()
         req.symbol = self.
         self.algo_engine.main_engine.query_history(req)
-
+        '''
+        pass
 
     def init_setting(self, setting: dict = {}):
         for key in setting:
