@@ -8,6 +8,15 @@ from vnpy.trader.utility import VlineGenerator, MarketEventGenerator, VlineQueue
 from pprint import pprint
 from vnpy.trader.object import HistoryRequest
 
+from vnpy.trader.constant import (
+    Direction,
+    OrderType,
+    Interval,
+    Exchange,
+    Offset,
+    Status
+)
+
 from vnpy.app.cta_strategy import (
     CtaTemplate,
     StopOrder,
@@ -78,6 +87,9 @@ class GridVline(CtaTemplate):
         self.symbols = ['btcusdt', 'ethusdt']
         self.exchanges = ['HUOBI']
 
+        #self.is_vline_inited = False
+        self.on_init()
+        #self.is_vline_inited = True
 
         # init setting
         #pprint(setting)
@@ -107,8 +119,8 @@ class GridVline(CtaTemplate):
             self.init_vline_generator()
 
         if True:
-            self.vqg = {}
-            self.init_vline_queue_generator()
+            pass
+
 
         # inti market event generator
         #self.meg = None
@@ -134,7 +146,18 @@ class GridVline(CtaTemplate):
         Callback when strategy is inited.
         """
         self.write_log("策略初始化")
-        self.load_bar(10)
+        #self.load_bar(10)
+
+        self.vqg = {}
+        self.init_vline_queue_generator()
+
+        self.is_vline_inited = False
+        self.init_data()
+        self.is_vline_inited = True
+
+        for vts in self.vqg:
+            for vol in self.vqg[vts].vq:
+                print(self.vqg[vts].vq[vol].dist)
 
     def on_start(self):
         """
@@ -148,24 +171,13 @@ class GridVline(CtaTemplate):
         """
         self.write_log("策略停止")
 
-    def on_init(self):
-        self.init_data()
-
     def init_data(self):
-        '''
-        init vline by loading history data from market
-        :return:
-        symbol: str
-        exchange: Exchange
-        start: datetime
-        end: datetime = None
-        interval: Interval = None
+        self.load_bar(2, interval=Interval.MINUTE, callback=self.on_init_vline_queue)
 
-        req = HistoryRequest()
-        req.symbol = self.
-        self.algo_engine.main_engine.query_history(req)
-        '''
-        pass
+    def on_init_vline_queue(self, bar: BarData):
+        # init load_bar data is from reverse order
+        for vt_symbol in self.vqg:
+            self.vqg[vt_symbol].init_by_kline(bar=bar)
 
     def init_setting(self, setting: dict = {}):
         for key in setting:
@@ -240,18 +252,19 @@ class GridVline(CtaTemplate):
         #self.write_log(f"Tick: {tick.last_price} TS: {tick.datetime}")
 
     def on_market_trade(self, trade: TradeData):
-        #self.vg[trade.vt_symbol].update_market_trades(trade=trade)
-        self.vqg[trade.vt_symbol].update_market_trades(trade=trade)
+        if self.is_vline_inited:
+            #self.vg[trade.vt_symbol].update_market_trades(trade=trade)
+            self.vqg[trade.vt_symbol].update_market_trades(trade=trade)
 
-        if trade.vt_symbol == 'btcusdt.HUOBI':
-            #print(len(self.vg[trade.vt_symbol].trades), trade)
-            #print(self.vg[trade.vt_symbol].vline)
-            for vb in self.vqg[trade.vt_symbol].vq:
-                print(vb, self.vqg[trade.vt_symbol].vq[vb].vol)
-                #if not self.vqg[trade.vt_symbol].vline_buf[vb].is_empty():
-                    #print(vb, len(self.vqg[trade.vt_symbol].vlines[vb]), self.vqg[trade.vt_symbol].vline_buf[vb])
-                    #print(f'Size:{len(self.vg[trade.vt_symbol].vlines[vb])} Vol:{vb}')
-            print()
+            if trade.vt_symbol == 'btcusdt.HUOBI':
+                #print(len(self.vg[trade.vt_symbol].trades), trade)
+                #print(self.vg[trade.vt_symbol].vline)
+                for vb in self.vqg[trade.vt_symbol].vq:
+                    print(vb, self.vqg[trade.vt_symbol].vq[vb].vol)
+                    #if not self.vqg[trade.vt_symbol].vline_buf[vb].is_empty():
+                        #print(vb, len(self.vqg[trade.vt_symbol].vlines[vb]), self.vqg[trade.vt_symbol].vline_buf[vb])
+                        #print(f'Size:{len(self.vg[trade.vt_symbol].vlines[vb])} Vol:{vb}')
+                print()
 
     def on_kline(self, bar: BarData):
         self.vqg[bar.vt_symbol].update_kline(bar=bar)

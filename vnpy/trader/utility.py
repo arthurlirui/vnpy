@@ -650,6 +650,10 @@ class VlineQueueGenerator:
         for vol in self.vol_list:
             self.vq[vol].update_trade(trade=trade)
 
+    def init_by_kline(self, bar: BarData):
+        for vol in self.vol_list:
+            self.vq[vol].init_kline(bar=bar)
+
 
 class VlineQueue:
     def __init__(self, max_vol: float = 10.0, bin_size: float = 1.0, save_trade: bool = True):
@@ -667,6 +671,12 @@ class VlineQueue:
         while self.size() > self.max_vol:
             self.pop()
 
+    def init_kline(self, bar: BarData):
+        trade = bar2trade(bar)
+        self.last_trade = trade
+        if self.size() <= self.max_vol:
+            self.push_front(trade=trade)
+
     def update_kline(self, bar: BarData):
         trade = bar2trade(bar)
         self.last_trade = trade
@@ -677,6 +687,12 @@ class VlineQueue:
     def push(self, trade: TradeData):
         if self.save_trade:
             self.trades.append(trade)
+        self.vol = self.vol + trade.volume
+        self.push_dist(trade=trade)
+
+    def push_front(self, trade: TradeData):
+        if self.save_trade:
+            self.trades.insert(0, trade)
         self.vol = self.vol + trade.volume
         self.push_dist(trade=trade)
 
@@ -1533,13 +1549,10 @@ def get_file_logger(filename: str) -> logging.Logger:
     return logger
 
 
-def bar2trade(self, bar: BarData) -> TradeData:
-    trade = TradeData()
+def bar2trade(bar: BarData) -> TradeData:
+    trade = TradeData(gateway_name=bar.gateway_name, symbol=bar.symbol, exchange=bar.exchange, orderid='kline', tradeid='kline')
     trade.vt_symbol = bar.vt_symbol
-    trade.symbol = bar.symbol
-    trade.exchange = bar.exchange
     trade.datetime = bar.datetime
-    trade.volume = bar.volume
-    trade.price = 0.25 * (bar.open_price + bar.close_price + bar.high_price + bar.close_price)
-    trade.gateway_name = bar.gateway_name
+    trade.price = round(0.25 * (bar.open_price + bar.close_price + bar.high_price + bar.close_price), 8)
+    trade.volume = round(bar.volume / trade.price, 8)
     return trade
