@@ -13,7 +13,7 @@ from math import floor, ceil
 import numpy as np
 import talib
 
-from .object import BarData, TickData, VlineData, TradeData, DistData, MarketEventData
+from .object import BarData, TickData, VlineData, TradeData, DistData, MarketEventData, Direction
 from .constant import Exchange, Interval, MarketEvent
 
 
@@ -687,14 +687,16 @@ class VlineQueue:
 
     def init_kline(self, bar: BarData):
         trade = bar2trade(bar)
-        #self.last_trade = trade
-        if self.size() <= self.max_vol:
-            self.push(trade=trade)
+        self.last_trade = trade
+        self.push(trade=trade)
+        while self.size() > self.max_vol:
+            self.pop()
 
     def init_trade(self, trade: TradeData):
-        #self.last_trade = trade
-        if self.size() <= self.max_vol:
-            self.push(trade=trade)
+        self.last_trade = trade
+        self.push(trade=trade)
+        while self.size() > self.max_vol:
+            self.pop()
 
     def update_kline(self, bar: BarData):
         trade = bar2trade(bar)
@@ -746,6 +748,9 @@ class VlineQueue:
 
     def size(self):
         return self.vol
+
+    def __str__(self):
+        return f'{len(self.trades)} {self.trades[0]} {self.trades[-1]}'
 
 
 class DistGenerator:
@@ -1580,4 +1585,5 @@ def bar2trade(bar: BarData) -> TradeData:
     trade.datetime = bar.datetime
     trade.price = round(0.25 * (bar.open_price + bar.close_price + bar.high_price + bar.close_price), 8)
     trade.volume = round(bar.volume / trade.price, 8)
+    trade.direction = Direction.NONE
     return trade

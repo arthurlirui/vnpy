@@ -142,7 +142,6 @@ class GridVline(CtaTemplate):
         #self.put_parameters_event()
         #self.put_variables_event()
 
-
     def on_init(self):
         """
         Callback when strategy is inited.
@@ -159,7 +158,7 @@ class GridVline(CtaTemplate):
 
         for vts in self.vqg:
             for vol in self.vqg[vts].vol_list:
-                print(vts, vol, self.vqg[vts].get_vq(vol).dist)
+                print(vts, vol, self.vqg[vts].get_vq(vol))
 
     def on_start(self):
         """
