@@ -618,7 +618,7 @@ class VlineQueueGenerator:
     For
     1. Generate several vline from trade data
     '''
-    def __init__(self, vol_list: list = [], bin_size: float = 1.0, save_data: bool = False):
+    def __init__(self, vol_list: list = [], bin_size: float = 1.0, save_data: bool = False, init_thresh_vol: float = 50):
         """Constructor"""
         self.vol_list = vol_list
         self.bin_size = bin_size
@@ -627,6 +627,8 @@ class VlineQueueGenerator:
         self.vq = {}
         for vol in self.vol_list:
             self.vq[vol] = VlineQueue(max_vol=vol, bin_size=self.bin_size, save_trade=self.save_data)
+
+        self.init_thresh_vol = init_thresh_vol
         self.last_trade = None
 
     def get_vq(self, vol):
@@ -656,9 +658,15 @@ class VlineQueueGenerator:
         for vol in self.vol_list:
             self.vq[vol].update_trade(trade=trade)
 
+    def init_by_trade(self, trade: TradeData):
+        for vol in self.vol_list:
+            if vol <= self.init_thresh_vol:
+                self.vq[vol].init_trade(trade=trade)
+
     def init_by_kline(self, bar: BarData):
         for vol in self.vol_list:
-            self.vq[vol].init_kline(bar=bar)
+            if vol > self.init_thresh_vol:
+                self.vq[vol].init_kline(bar=bar)
 
 
 class VlineQueue:
@@ -679,9 +687,14 @@ class VlineQueue:
 
     def init_kline(self, bar: BarData):
         trade = bar2trade(bar)
-        self.last_trade = trade
+        #self.last_trade = trade
         if self.size() <= self.max_vol:
-            self.push_front(trade=trade)
+            self.push(trade=trade)
+
+    def init_trade(self, trade: TradeData):
+        #self.last_trade = trade
+        if self.size() <= self.max_vol:
+            self.push(trade=trade)
 
     def update_kline(self, bar: BarData):
         trade = bar2trade(bar)
@@ -691,10 +704,16 @@ class VlineQueue:
             self.pop()
 
     def push(self, trade: TradeData):
-        if self.save_trade:
+        if len(self.trades) > 0 and trade.datetime > self.trades[-1].datetime:
             self.trades.append(trade)
-        self.vol = self.vol + trade.volume
-        self.push_dist(trade=trade)
+            self.vol = self.vol + trade.volume
+            self.push_dist(trade=trade)
+        elif len(self.trades) == 0:
+            self.trades.append(trade)
+            self.vol = self.vol + trade.volume
+            self.push_dist(trade=trade)
+        else:
+            return
 
     def push_front(self, trade: TradeData):
         if self.save_trade:

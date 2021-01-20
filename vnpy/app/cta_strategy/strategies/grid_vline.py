@@ -174,9 +174,9 @@ class GridVline(CtaTemplate):
         self.write_log("策略停止")
 
     def init_data(self):
-        self.load_tick(2, callback=self.on_init_tick)
+        #self.load_tick(2, callback=self.on_init_tick)
         self.load_market_trade(callback=self.on_init_market_trade)
-        #self.load_bar(2, interval=Interval.MINUTE, callback=self.on_init_vline_queue)
+        self.load_bar(2, interval=Interval.MINUTE, callback=self.on_init_vline_queue)
 
     def load_tick(self, days: int, callback: Callable):
         """
@@ -191,7 +191,9 @@ class GridVline(CtaTemplate):
         print(tick)
 
     def on_init_market_trade(self, trade: TradeData):
-        print(trade)
+        for vt_symbol in self.vqg:
+            if trade.vt_symbol == vt_symbol:
+                self.vqg[vt_symbol].init_by_trade(trade=trade)
 
     def on_init_vline_queue(self, bar: BarData):
         # init load_bar data is from reversed order

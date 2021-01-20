@@ -354,6 +354,8 @@ class HuobiRestApi(RestClient):
 
             msg = f"Loading history trades {req.symbol}, total trades: {len(trades)}"
             self.gateway.write_log(msg)
+        trades = sorted(trades, key=lambda x: x.datetime)
+        #print(trades)
         return trades
 
     def query_history(self, req: HistoryRequest) -> List[BarData]:
@@ -406,6 +408,7 @@ class HuobiRestApi(RestClient):
                 msg = f"获取历史数据成功，{req.symbol} - {req.interval.value}，{begin} - {end}"
                 self.gateway.write_log(msg)
 
+        history = sorted(history, key=lambda x: x.datetime)
         return history
 
     def send_order(self, req: OrderRequest) -> str:
