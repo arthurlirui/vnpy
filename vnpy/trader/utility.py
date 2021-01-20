@@ -629,6 +629,12 @@ class VlineQueueGenerator:
             self.vq[vol] = VlineQueue(max_vol=vol, bin_size=self.bin_size, save_trade=self.save_data)
         self.last_trade = None
 
+    def get_vq(self, vol):
+        if vol in self.vol_list:
+            return self.vq[vol]
+        else:
+            return None
+
     def check_valid(self, trade: TradeData) -> bool:
         is_valid = True
         # filter trade data with 0 volume

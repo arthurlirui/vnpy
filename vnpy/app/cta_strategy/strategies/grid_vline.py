@@ -7,6 +7,7 @@ import math
 from vnpy.trader.utility import VlineGenerator, MarketEventGenerator, VlineQueueGenerator
 from pprint import pprint
 from vnpy.trader.object import HistoryRequest
+from typing import Any, Callable
 
 from vnpy.trader.constant import (
     Direction,
@@ -84,7 +85,7 @@ class GridVline(CtaTemplate):
         """"""
         super(GridVline, self).__init__(cta_engine, strategy_name, vt_symbol, setting)
 
-        self.symbols = ['btcusdt', 'ethusdt']
+        self.symbols = ['btcusdt']
         self.exchanges = ['HUOBI']
 
         #self.is_vline_inited = False
@@ -118,7 +119,7 @@ class GridVline(CtaTemplate):
             self.vline_buf = {}
             self.init_vline_generator()
 
-        if True:
+        if False:
             pass
 
 
@@ -141,6 +142,7 @@ class GridVline(CtaTemplate):
         #self.put_parameters_event()
         #self.put_variables_event()
 
+
     def on_init(self):
         """
         Callback when strategy is inited.
@@ -156,8 +158,8 @@ class GridVline(CtaTemplate):
         self.is_vline_inited = True
 
         for vts in self.vqg:
-            for vol in self.vqg[vts].vq:
-                print(self.vqg[vts].vq[vol].dist)
+            for vol in self.vqg[vts].vol_list:
+                print(vts, vol, self.vqg[vts].get_vq(vol).dist)
 
     def on_start(self):
         """
@@ -172,12 +174,30 @@ class GridVline(CtaTemplate):
         self.write_log("策略停止")
 
     def init_data(self):
-        self.load_bar(2, interval=Interval.MINUTE, callback=self.on_init_vline_queue)
+        self.load_tick(2, callback=self.on_init_tick)
+        self.load_market_trade(callback=self.on_init_market_trade)
+        #self.load_bar(2, interval=Interval.MINUTE, callback=self.on_init_vline_queue)
+
+    def load_tick(self, days: int, callback: Callable):
+        """
+        Load historical tick data for initializing strategy.
+        """
+        self.cta_engine.load_tick(self.vt_symbol, days, callback=callback)
+
+    def load_market_trade(self, callback: Callable):
+        self.cta_engine.load_market_trade(self.vt_symbol, callback=callback)
+
+    def on_init_tick(self, tick: TickData):
+        print(tick)
+
+    def on_init_market_trade(self, trade: TradeData):
+        print(trade)
 
     def on_init_vline_queue(self, bar: BarData):
-        # init load_bar data is from reverse order
+        # init load_bar data is from reversed order
         for vt_symbol in self.vqg:
-            self.vqg[vt_symbol].init_by_kline(bar=bar)
+            if bar.vt_symbol == vt_symbol:
+                self.vqg[vt_symbol].init_by_kline(bar=bar)
 
     def init_setting(self, setting: dict = {}):
         for key in setting:
@@ -229,11 +249,16 @@ class GridVline(CtaTemplate):
         1. update tick: last_tick, vline_buf
         2. update vline: (1) new vline (2) multi vline
         """
+        if not self.is_vline_inited:
+            pass
+
+
+
         if not tick.last_price:
             return
 
         # update tick
-        print(tick)
+        #print(tick)
         self.last_tick = tick
 
         # update vline for different pairs
@@ -255,8 +280,11 @@ class GridVline(CtaTemplate):
         if self.is_vline_inited:
             #self.vg[trade.vt_symbol].update_market_trades(trade=trade)
             self.vqg[trade.vt_symbol].update_market_trades(trade=trade)
+            for vb in self.vqg[trade.vt_symbol].vol_list:
+                print(vb, self.vqg[trade.vt_symbol].get_vq(vb).vol)
+                pass
 
-            if trade.vt_symbol == 'btcusdt.HUOBI':
+            if False and trade.vt_symbol == 'btcusdt.HUOBI':
                 #print(len(self.vg[trade.vt_symbol].trades), trade)
                 #print(self.vg[trade.vt_symbol].vline)
                 for vb in self.vqg[trade.vt_symbol].vq:

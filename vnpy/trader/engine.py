@@ -207,6 +207,16 @@ class MainEngine:
         if gateway:
             gateway.cancel_orders(reqs)
 
+    def query_market_trade(self, req: HistoryRequest, gateway_name: str) -> Optional[List[BarData]]:
+        """
+        Send query history request to a specific gateway.
+        """
+        gateway = self.get_gateway(gateway_name)
+        if gateway:
+            return gateway.query_market_trade(req)
+        else:
+            return None
+
     def query_history(self, req: HistoryRequest, gateway_name: str) -> Optional[List[BarData]]:
         """
         Send cancel order request to a specific gateway.

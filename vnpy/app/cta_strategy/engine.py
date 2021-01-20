@@ -605,9 +605,16 @@ class CtaEngine(BaseEngine):
         for tick in ticks:
             callback(tick)
 
-    def call_strategy_func(
-        self, strategy: CtaTemplate, func: Callable, params: Any = None
-    ):
+    def load_market_trade(self, vt_symbol: str, callback: Callable):
+        contract = self.main_engine.get_contract(vt_symbol)
+        symbol, exchange = extract_vt_symbol(vt_symbol)
+
+        req = HistoryRequest(symbol=symbol, exchange=exchange, start=datetime.now())
+        trades = self.main_engine.query_market_trade(req=req, gateway_name=contract.gateway_name)
+        for trade in trades:
+            callback(trade)
+
+    def call_strategy_func(self, strategy: CtaTemplate, func: Callable, params: Any = None):
         """
         Call function of a strategy and catch any exception raised.
         """

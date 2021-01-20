@@ -97,6 +97,9 @@ HUOBI2INTERVAL_VT = {
 }
 
 CHINA_TZ = pytz.timezone("Asia/Shanghai")
+SAUDI_TZ = pytz.timezone("Asia/Qatar")
+Singapore_TZ = pytz.timezone("Asia/Singapore")
+MY_TZ = SAUDI_TZ
 
 huobi_symbols: set = set()
 symbol_name_map: Dict[str, str] = {}
@@ -184,6 +187,9 @@ class HuobiGateway(BaseGateway):
     def query_history(self, req: HistoryRequest):
         """"""
         return self.rest_api.query_history(req)
+
+    def query_market_trade(self, req: HistoryRequest):
+        return self.rest_api.query_market_trade(req=req)
 
     def close(self) -> None:
         """"""
@@ -303,22 +309,52 @@ class HuobiRestApi(RestClient):
             callback=self.on_query_contract
         )
 
-    def query_trade(self, req) -> List[TradeData]:
+    def query_market_trade(self, req: HistoryRequest) -> List[TradeData]:
         '''
         Author: Arthur
-        :param req:
-        :return:
         '''
-        params = {
-            "symbol": req.symbol,
-            "size": 2000
-        }
-        self.add_request(
-            method="GET",
-            path="/market/history/trade",
-            callback=self.on_query_trade,
-            params=params
-        )
+        params = {"symbol": req.symbol, "size": 2000}
+        # Get response from server
+        resp = self.request("GET", "/market/history/trade", params=params)
+        trades = []
+        if resp.status_code // 100 != 2:
+            msg = f"获取历史数据失败，状态码：{resp.status_code}，信息：{resp.text}"
+            self.gateway.write_log(msg)
+        else:
+            data = resp.json()
+            if not data:
+                msg = f"获取历史数据为空"
+                self.gateway.write_log(msg)
+            ts = data['ts']
+            ch = data['ch']
+            symbol = ch.split('.')[1]
+
+            raw_trade = data['data']
+            for rt in raw_trade:
+                for d in rt['data']:
+                    symbol = req.symbol
+                    if d['direction'] == 'buy':
+                        direction = Direction.LONG
+                    elif d['direction'] == 'sell':
+                        direction = Direction.SHORT
+                    price = round(float(d['price']), 8)
+                    volume = round(float(d['amount']), 8)
+                    dt = generate_datetime(timestamp=d['ts']/1000.0, tzinfo=MY_TZ)
+                    #offset = Offset.NONE
+                    trade = TradeData(symbol=symbol,
+                                      exchange=req.exchange,
+                                      orderid=int(d['id']),
+                                      tradeid=int(d['trade-id']),
+                                      direction=direction,
+                                      price=price,
+                                      volume=volume,
+                                      datetime=dt,
+                                      gateway_name=self.gateway_name)
+                    trades.append(trade)
+
+            msg = f"Loading history trades {req.symbol}, total trades: {len(trades)}"
+            self.gateway.write_log(msg)
+        return trades
 
     def query_history(self, req: HistoryRequest) -> List[BarData]:
         """"""
@@ -1118,8 +1154,8 @@ def create_signature_v2(
     return params
 
 
-def generate_datetime(timestamp: float) -> datetime:
+def generate_datetime(timestamp: float, tzinfo=Singapore_TZ) -> datetime:
     """"""
     dt = datetime.fromtimestamp(timestamp)
-    dt = dt.replace(tzinfo=CHINA_TZ)
+    dt = dt.replace(tzinfo=tzinfo)
     return dt
