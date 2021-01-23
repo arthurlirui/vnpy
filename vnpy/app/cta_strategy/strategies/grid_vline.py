@@ -277,53 +277,33 @@ class GridVline(CtaTemplate):
         if not tick.last_price:
             return
 
-        # update tick
-        #print(tick)
         self.last_tick = tick
-
-        # update vline for different pairs
-        #self.vg[tick.vt_symbol].update_tick(tick=tick)
-        #print(tick)
-        #print(self.vg[tick.vt_symbol].vline)
-
-        #self.last_vline = self.vg[self.vt_symbol].vline
-
-        #for v in self.vg.vline_buf:
-        #    if self.vg.vline_buf[v].volume < 0.9*v:
-        #        return
-
-        """"""
-        #self.last_tick = tick
-        #self.write_log(f"Tick: {tick.last_price} TS: {tick.datetime}")
 
     def on_market_trade(self, trade: TradeData):
         if self.is_vline_inited:
-            #self.vg[trade.vt_symbol].update_market_trades(trade=trade)
             self.vqg[trade.vt_symbol].update_market_trades(trade=trade)
-            #for vb in self.vqg[trade.vt_symbol].vol_list:
-                #print(vb, self.vqg[trade.vt_symbol].get_vq(vb).vol)
-            #    pass
 
-            if True:
-                print(trade)
-                vol_pos = self.check_vline_pos(trade.price)
-                pprint(vol_pos)
-                open_close_price = self.check_open_close_price()
-                pprint(open_close_price)
-                print()
-
-            if False and trade.vt_symbol == 'btcusdt.HUOBI':
-                #print(len(self.vg[trade.vt_symbol].trades), trade)
-                #print(self.vg[trade.vt_symbol].vline)
-                for vb in self.vqg[trade.vt_symbol].vq:
-                    print(vb, self.vqg[trade.vt_symbol].vq[vb].vol)
-                    #if not self.vqg[trade.vt_symbol].vline_buf[vb].is_empty():
-                        #print(vb, len(self.vqg[trade.vt_symbol].vlines[vb]), self.vqg[trade.vt_symbol].vline_buf[vb])
-                        #print(f'Size:{len(self.vg[trade.vt_symbol].vlines[vb])} Vol:{vb}')
-                print()
+            # if True:
+            #     print(trade)
+            #     vol_pos = self.check_vline_pos(trade.price)
+            #     pprint(vol_pos)
+            #     open_close_price = self.check_open_close_price()
+            #     pprint(open_close_price)
+            #     print()
+            #
+            # if False and trade.vt_symbol == 'btcusdt.HUOBI':
+            #     #print(len(self.vg[trade.vt_symbol].trades), trade)
+            #     #print(self.vg[trade.vt_symbol].vline)
+            #     for vb in self.vqg[trade.vt_symbol].vq:
+            #         print(vb, self.vqg[trade.vt_symbol].vq[vb].vol)
+            #         #if not self.vqg[trade.vt_symbol].vline_buf[vb].is_empty():
+            #             #print(vb, len(self.vqg[trade.vt_symbol].vlines[vb]), self.vqg[trade.vt_symbol].vline_buf[vb])
+            #             #print(f'Size:{len(self.vg[trade.vt_symbol].vlines[vb])} Vol:{vb}')
+            #     print()
 
     def on_kline(self, bar: BarData):
-        self.vqg[bar.vt_symbol].update_kline(bar=bar)
+        #self.vqg[bar.vt_symbol].update_kline(bar=bar)
+        print(bar)
 
     def on_vline(self, vline: VlineData, vol: int):
         '''
@@ -347,9 +327,6 @@ class GridVline(CtaTemplate):
         # update position
         #self.update_position()
 
-    def on_multi_vline(self, vline: VlineData, vol: int):
-        pass
-
     def on_timer(self):
         """"""
         if not self.last_tick:
@@ -361,40 +338,6 @@ class GridVline(CtaTemplate):
             return
         self.timer_count = 0
         self.pos += 1
-        #print(self.last_vline)
-
-        #if self.vt_orderid:
-        #    self.cancel_all()
-
-        # # Calculate target volume to buy and sell
-        # target_buy_distance = (
-        #     self.price - self.last_tick.ask_price_1) / self.step_price
-        # target_buy_position = math.floor(
-        #     target_buy_distance) * self.step_volume
-        # target_buy_volume = target_buy_position - self.pos
-        #
-        # # Calculate target volume to sell
-        # target_sell_distance = (
-        #     self.price - self.last_tick.bid_price_1) / self.step_price
-        # target_sell_position = math.ceil(
-        #     target_sell_distance) * self.step_volume
-        # target_sell_volume = self.pos - target_sell_position
-        #
-        # # Buy when price dropping
-        # if target_buy_volume > 0 and False:
-        #     self.vt_orderid = self.buy(
-        #         self.vt_symbol,
-        #         self.last_tick.ask_price_1,
-        #         min(target_buy_volume, self.last_tick.ask_volume_1)
-        #     )
-        # # Sell when price rising
-        # elif target_sell_volume > 0 and False:
-        #     self.vt_orderid = self.sell(
-        #         self.vt_symbol,
-        #         self.last_tick.bid_price_1,
-        #         min(target_sell_volume, self.last_tick.bid_volume_1)
-        #     )
-
         # Update UI
         self.put_variables_event()
 

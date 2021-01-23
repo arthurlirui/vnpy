@@ -1072,6 +1072,9 @@ class HuobiDataWebsocketApi(HuobiWebsocketApiBase):
         bar.close_price = data["tick"]["close"]
         bar.high_price = data["tick"]["high"]
         bar.low_price = data["tick"]["low"]
+        bar.count = data["tick"]["count"]
+        bar.amount = data["tick"]["amount"]
+        bar.open_time = generate_datetime(data["tick"]["id"])
         self.gateway.on_kline(copy(bar))
 
 
