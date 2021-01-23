@@ -291,10 +291,9 @@ class BarData(BaseData):
             self.low_price = min(self.low_price, tick.last_price)
 
     def __str__(self):
-        return '%s O:%.3f C:%.3f H:%.3f L:%.3f V:%.3f OT:%s CT:%s' % (self.symbol, self.open_price, self.close_price,
-                                                                      self.high_price, self.low_price, self.volume,
-                                                                      self.datetime,
-                                                                      self.datetime+pd.to_timedelta(self.interval.value))
+        return '%s O:%.3f C:%.3f H:%.3f L:%.3f V:%.3f OT:%s I:%s' % (self.symbol, self.open_price, self.close_price,
+                                                                     self.high_price, self.low_price,
+                                                                     self.volume, self.datetime, self.interval.value)
 
     def is_empty(self):
         if not self.high_price:

@@ -8,6 +8,7 @@ from vnpy.trader.utility import VlineGenerator, MarketEventGenerator, VlineQueue
 from pprint import pprint
 from vnpy.trader.object import HistoryRequest
 from typing import Any, Callable
+from pprint import pprint
 
 from vnpy.trader.constant import (
     Direction,
@@ -156,9 +157,10 @@ class GridVline(CtaTemplate):
         self.init_data()
         self.is_vline_inited = True
 
-        for vts in self.vqg:
-            for vol in self.vqg[vts].vol_list:
-                print(vts, vol, self.vqg[vts].get_vq(vol))
+        if False:
+            for vts in self.vqg:
+                for vol in self.vqg[vts].vol_list:
+                    print(vts, vol, self.vqg[vts].get_vq(vol))
 
     def on_start(self):
         """
@@ -176,6 +178,25 @@ class GridVline(CtaTemplate):
         #self.load_tick(2, callback=self.on_init_tick)
         self.load_market_trade(callback=self.on_init_market_trade)
         self.load_bar(2, interval=Interval.MINUTE, callback=self.on_init_vline_queue)
+
+    def check_vline_pos(self, price):
+        vol_pos = {}
+        #print(self.vt_symbol)
+        for vol in self.vqg[self.vt_symbol].vol_list:
+            vq = self.vqg[self.vt_symbol].get_vq(vol=vol)
+            pc = vq.less_vol(price=price)
+            vol_pos[vol] = pc
+        return vol_pos
+
+    def check_open_close_price(self):
+        open_close_price = {}
+        for vol in self.vqg[self.vt_symbol].vol_list:
+            vq = self.vqg[self.vt_symbol].get_vq(vol=vol)
+            if len(vq.trades) > 0:
+                t0 = vq.trades[0]
+                tl = vq.trades[-1]
+                open_close_price[vol] = {'o': t0.__str__(), 'c': tl.__str__()}
+        return open_close_price
 
     def load_tick(self, days: int, callback: Callable):
         """
@@ -253,8 +274,6 @@ class GridVline(CtaTemplate):
         if not self.is_vline_inited:
             pass
 
-
-
         if not tick.last_price:
             return
 
@@ -281,9 +300,17 @@ class GridVline(CtaTemplate):
         if self.is_vline_inited:
             #self.vg[trade.vt_symbol].update_market_trades(trade=trade)
             self.vqg[trade.vt_symbol].update_market_trades(trade=trade)
-            for vb in self.vqg[trade.vt_symbol].vol_list:
-                print(vb, self.vqg[trade.vt_symbol].get_vq(vb).vol)
-                pass
+            #for vb in self.vqg[trade.vt_symbol].vol_list:
+                #print(vb, self.vqg[trade.vt_symbol].get_vq(vb).vol)
+            #    pass
+
+            if True:
+                print(trade)
+                vol_pos = self.check_vline_pos(trade.price)
+                pprint(vol_pos)
+                open_close_price = self.check_open_close_price()
+                pprint(open_close_price)
+                print()
 
             if False and trade.vt_symbol == 'btcusdt.HUOBI':
                 #print(len(self.vg[trade.vt_symbol].trades), trade)

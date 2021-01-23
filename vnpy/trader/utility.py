@@ -682,8 +682,11 @@ class VlineQueue:
     def update_trade(self, trade: TradeData):
         self.last_trade = trade
         self.push(trade=trade)
+        sz = self.size()
         while self.size() > self.max_vol:
-            self.pop()
+            t = self.pop()
+            sz = self.size()
+            print(t)
 
     def init_kline(self, bar: BarData):
         trade = bar2trade(bar)
@@ -706,7 +709,7 @@ class VlineQueue:
             self.pop()
 
     def push(self, trade: TradeData):
-        if len(self.trades) > 0 and trade.datetime > self.trades[-1].datetime:
+        if len(self.trades) > 0 and trade.datetime >= self.trades[-1].datetime:
             self.trades.append(trade)
             self.vol = self.vol + trade.volume
             self.push_dist(trade=trade)
@@ -725,9 +728,7 @@ class VlineQueue:
 
     def pop(self) -> TradeData:
         if len(self.trades) > 0:
-            t0 = self.trades[0]
-            if self.save_trade and len(self.trades) > 0:
-                self.trades.pop(0)
+            t0 = self.trades.pop(0)
             self.vol = self.vol - t0.volume
             self.pop_dist(trade=t0)
             return t0
@@ -748,6 +749,11 @@ class VlineQueue:
 
     def size(self):
         return self.vol
+
+    def less_vol(self, price):
+        ltvol = sum([self.dist[k] for k in self.dist if k < price])
+        pc = ltvol / self.vol
+        return pc
 
     def __str__(self):
         return f'{len(self.trades)} {self.trades[0]} {self.trades[-1]}'

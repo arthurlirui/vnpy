@@ -173,6 +173,11 @@ class MainEngine:
         if gateway:
             gateway.subscribe(req)
 
+    # def subscribe_kline(self, req: HistoryRequest, gateway_name: str) -> None:
+    #     gateway = self.get_gateway(gateway_name)
+    #     if gateway:
+    #         gateway.subscribe_kline(req)
+
     def send_order(self, req: OrderRequest, gateway_name: str) -> str:
         """
         Send new order request to a specific gateway.

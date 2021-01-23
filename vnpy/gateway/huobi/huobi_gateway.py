@@ -285,6 +285,13 @@ class HuobiRestApi(RestClient):
             callback=self.on_query_market_status
         )
 
+    def query_market_summary(self):
+        self.add_request(
+            method="GET",
+            path="/v1/common/symbols",
+            callback=self.on_query_market_summary
+        )
+
     def query_account(self) -> None:
         """"""
         self.add_request(
@@ -419,7 +426,7 @@ class HuobiRestApi(RestClient):
 
         orderid = self.new_orderid()
         order = req.create_order_data(orderid, self.gateway_name)
-        order.datetime = datetime.now(CHINA_TZ)
+        order.datetime = datetime.now(MY_TZ)
 
         data = {
             "account-id": self.account_id,
@@ -870,7 +877,7 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
             direction=order.direction,
             price=float(data["tradePrice"]),
             volume=float(data["tradeVolume"]),
-            datetime=datetime.now(CHINA_TZ),
+            datetime=datetime.now(MY_TZ),
             gateway_name=self.gateway_name,
         )
         self.gateway.on_trade(trade)
@@ -927,7 +934,7 @@ class HuobiDataWebsocketApi(HuobiWebsocketApiBase):
             symbol=symbol,
             name=symbol_name_map.get(symbol, ""),
             exchange=Exchange.HUOBI,
-            datetime=datetime.now(CHINA_TZ),
+            datetime=datetime.now(MY_TZ),
             gateway_name=self.gateway_name,
         )
         self.ticks[symbol] = tick
@@ -935,7 +942,7 @@ class HuobiDataWebsocketApi(HuobiWebsocketApiBase):
         # create kline buffer
         bar = BarData(symbol=symbol,
                       exchange=Exchange.HUOBI,
-                      datetime=datetime.now(CHINA_TZ),
+                      datetime=datetime.now(MY_TZ),
                       gateway_name=self.gateway_name)
 
         self.klines[symbol] = bar
@@ -943,7 +950,7 @@ class HuobiDataWebsocketApi(HuobiWebsocketApiBase):
         # create market trades buffer
         market_trade = TradeData(symbol=symbol,
                                  exchange=Exchange.HUOBI,
-                                 datetime=datetime.now(CHINA_TZ),
+                                 datetime=datetime.now(MY_TZ),
                                  gateway_name=self.gateway_name, orderid='', tradeid='')
 
         self.trades[symbol] = market_trade
@@ -1157,7 +1164,7 @@ def create_signature_v2(
     return params
 
 
-def generate_datetime(timestamp: float, tzinfo=Singapore_TZ) -> datetime:
+def generate_datetime(timestamp: float, tzinfo=MY_TZ) -> datetime:
     """"""
     dt = datetime.fromtimestamp(timestamp)
     dt = dt.replace(tzinfo=tzinfo)
