@@ -3,12 +3,12 @@ from vnpy.trader.object import TradeData, OrderData, TickData
 from vnpy.trader.object import VlineData, BarData, PositionData, MarketEventData
 from vnpy.trader.engine import BaseEngine
 from vnpy.app.algo_trading import AlgoTemplate
-import math
-from vnpy.trader.utility import VlineGenerator, MarketEventGenerator, VlineQueueGenerator
+from vnpy.trader.utility import VlineGenerator, MarketEventGenerator, VlineQueueGenerator, BarQueueGenerator
 from pprint import pprint
 from vnpy.trader.object import HistoryRequest
 from typing import Any, Callable
 from pprint import pprint
+import math
 
 from vnpy.trader.constant import (
     Direction,
@@ -148,10 +148,11 @@ class GridVline(CtaTemplate):
         Callback when strategy is inited.
         """
         self.write_log("策略初始化")
-        #self.load_bar(10)
 
         self.vqg = {}
         self.init_vline_queue_generator()
+
+        self.kqg = BarQueueGenerator()
 
         self.is_vline_inited = False
         self.init_data()
@@ -175,9 +176,18 @@ class GridVline(CtaTemplate):
         self.write_log("策略停止")
 
     def init_data(self):
-        #self.load_tick(2, callback=self.on_init_tick)
+        # init local market data for vline
         self.load_market_trade(callback=self.on_init_market_trade)
         self.load_bar(2, interval=Interval.MINUTE, callback=self.on_init_vline_queue)
+
+        # init local market data for bar
+        self.load_bar(days=2, interval=Interval.MINUTE, callback=self.on_kline)
+        self.load_bar(days=2, interval=Interval.MINUTE_5, callback=self.on_kline)
+        self.load_bar(days=2, interval=Interval.MINUTE_15, callback=self.on_kline)
+        self.load_bar(days=2, interval=Interval.MINUTE_30, callback=self.on_kline)
+        self.load_bar(days=7, interval=Interval.HOUR, callback=self.on_kline)
+        self.load_bar(days=7, interval=Interval.HOUR_4, callback=self.on_kline)
+        self.load_bar(days=60, interval=Interval.DAILY, callback=self.on_kline)
 
     def check_vline_pos(self, price):
         vol_pos = {}
@@ -241,7 +251,9 @@ class GridVline(CtaTemplate):
                 #vline_vol = self.market_params[s]['vline_vol']
                 vline_vol_list = self.market_params[s]['vline_vol_list']
                 bin_size = self.market_params[s]['bin_size']
-                self.vqg[vt_sym] = VlineQueueGenerator(vol_list=vline_vol_list, bin_size=bin_size, save_data=True)
+                self.vqg[vt_sym] = VlineQueueGenerator(vol_list=vline_vol_list,
+                                                       vt_symbol=self.vt_symbol,
+                                                       bin_size=bin_size)
 
     def init_vline_generator(self):
         for s in self.symbols:
@@ -250,18 +262,8 @@ class GridVline(CtaTemplate):
                 vline_vol = self.market_params[s]['vline_vol']
                 vline_vol_list = self.market_params[s]['vline_vol_list']
                 self.vg[vt_sym] = VlineGenerator(on_vline=self.on_vline, vol_list=vline_vol_list)
-                #self.vg[vt_sym].multi_vline_setting(on_multi_vline=self.on_multi_vline, vol_list=vline_vol_list)
-
-        #self.vg = VlineGenerator(on_vline=self.on_vline, vol=self.vline_vol)
-        #self.vg.multi_vline_setting(on_multi_vline=self.on_multi_vline, vol_list=self.vline_vol_list)
-
-        # light copy of vline_buf from vline generator
-        #self.last_vline = self.vg[self.vt_symbol].vline
-        #self.vlines = self.vg[self.vt_symbol].vlines
-        #self.vline_buf = self.vg[self.vt_symbol].vline_buf
 
     def init_market_event_generator(self):
-        #self.meg = MarketEventGenerator(on_event=self.on_event)
         pass
 
     def on_tick(self, tick: TickData):
@@ -302,7 +304,7 @@ class GridVline(CtaTemplate):
             #     print()
 
     def on_kline(self, bar: BarData):
-        #self.vqg[bar.vt_symbol].update_kline(bar=bar)
+        self.kqg.update_bar(bar=bar)
         print(bar)
 
     def on_vline(self, vline: VlineData, vol: int):

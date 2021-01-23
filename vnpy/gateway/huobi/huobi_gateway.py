@@ -400,12 +400,14 @@ class HuobiRestApi(RestClient):
                         symbol=req.symbol,
                         exchange=req.exchange,
                         datetime=dt,
+                        open_time=dt,
                         interval=req.interval,
                         volume=d["vol"],
                         open_price=d["open"],
                         high_price=d["high"],
                         low_price=d["low"],
                         close_price=d["close"],
+                        amount=d["amount"],
                         gateway_name=self.gateway_name
                     )
                     history.append(bar)
@@ -415,7 +417,7 @@ class HuobiRestApi(RestClient):
                 msg = f"获取历史数据成功，{req.symbol} - {req.interval.value}，{begin} - {end}"
                 self.gateway.write_log(msg)
 
-        history = sorted(history, key=lambda x: x.datetime)
+        history = sorted(history, key=lambda x: x.open_time)
         return history
 
     def send_order(self, req: OrderRequest) -> str:

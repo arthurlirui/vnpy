@@ -618,15 +618,15 @@ class VlineQueueGenerator:
     For
     1. Generate several vline from trade data
     '''
-    def __init__(self, vol_list: list = [], bin_size: float = 1.0, save_data: bool = False, init_thresh_vol: float = 50):
+    def __init__(self, vol_list: list, vt_symbol: str, bin_size: float = 1.0, init_thresh_vol: float = 50):
         """Constructor"""
         self.vol_list = vol_list
         self.bin_size = bin_size
-        self.save_data = save_data
+        self.vt_symbol = vt_symbol
 
         self.vq = {}
         for vol in self.vol_list:
-            self.vq[vol] = VlineQueue(max_vol=vol, bin_size=self.bin_size, save_trade=self.save_data)
+            self.vq[vol] = VlineQueue(max_vol=vol, vt_symbol=self.vt_symbol, bin_size=self.bin_size)
 
         self.init_thresh_vol = init_thresh_vol
         self.last_trade = None
@@ -670,13 +670,14 @@ class VlineQueueGenerator:
 
 
 class VlineQueue:
-    def __init__(self, max_vol: float = 10.0, bin_size: float = 1.0, save_trade: bool = True):
+    def __init__(self, max_vol: float = 10.0, vt_symbol: str = None, bin_size: float = 1.0, save_trade: bool = True):
         self.max_vol = max_vol
         self.bin_size = bin_size
         self.save_trade = save_trade
         self.trades = []
         self.vol = 0
         self.dist = {}
+        self.vt_symbol = vt_symbol
         self.last_trade = None
 
     def update_trade(self, trade: TradeData):
@@ -912,14 +913,13 @@ class SimpleVlineGenerator:
 
 class BarQueueGenerator:
     def __init__(self):
-        #self.interval_list = interval_list
         self.barq = {}
 
     def update_bar(self, bar: BarData):
         if bar.vt_symbol not in self.barq:
             self.barq[bar.vt_symbol] = {}
-            if bar.interval not in self.barq[bar.vt_symbol]:
-                self.barq[bar.vt_symbol][bar.interval] = BarQueue(interval=bar.interval, vt_symbol=bar.vt_symbol)
+        if bar.interval not in self.barq[bar.vt_symbol]:
+            self.barq[bar.vt_symbol][bar.interval] = BarQueue(interval=bar.interval, vt_symbol=bar.vt_symbol)
 
         self.barq[bar.vt_symbol][bar.interval].update_bar(bar=bar)
 
