@@ -27,7 +27,8 @@ from vnpy.trader.event import (
     EVENT_ORDER,
     EVENT_TRADE,
     EVENT_POSITION,
-    EVENT_MARKET_TRADE
+    EVENT_MARKET_TRADE,
+    EVENT_KLINE
 )
 from vnpy.trader.constant import (
     Direction,
@@ -122,6 +123,7 @@ class CtaEngine(BaseEngine):
         self.event_engine.register(EVENT_TRADE, self.process_trade_event)
         self.event_engine.register(EVENT_POSITION, self.process_position_event)
         self.event_engine.register(EVENT_MARKET_TRADE, self.process_market_trade_event)
+        self.event_engine.register(EVENT_KLINE, self.process_kline_event)
 
     def init_rqdata(self):
         """
@@ -147,6 +149,17 @@ class CtaEngine(BaseEngine):
         data = rqdata_client.query_history(req)
         return data
 
+    def process_kline_event(self, event: Event):
+        bar = event.data
+        strategies = self.symbol_strategy_map.get(bar.vt_symbol, None)
+
+        if not strategies:
+            return
+
+        for strategy in strategies:
+            if strategy.inited:
+                self.call_strategy_func(strategy, strategy.on_kline, bar)
+
     def process_market_trade_event(self, event: Event):
         market_trade = event.data
         strategies = self.symbol_strategy_map.get(market_trade.vt_symbol, None)
@@ -157,10 +170,6 @@ class CtaEngine(BaseEngine):
         for strategy in strategies:
             if strategy.inited:
                 self.call_strategy_func(strategy, strategy.on_market_trade, market_trade)
-
-        #if strategy:
-            #for stra in self.strategies:
-                #stra.update_market_trade(market_trade)
 
     def process_tick_event(self, event: Event):
         """"""
@@ -613,6 +622,9 @@ class CtaEngine(BaseEngine):
         trades = self.main_engine.query_market_trade(req=req, gateway_name=contract.gateway_name)
         for trade in trades:
             callback(trade)
+
+    def load_market_contract(self, callback: Callable):
+        pass
 
     def call_strategy_func(self, strategy: CtaTemplate, func: Callable, params: Any = None):
         """
