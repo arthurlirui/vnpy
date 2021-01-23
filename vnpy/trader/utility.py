@@ -910,6 +910,43 @@ class SimpleVlineGenerator:
         return bar
 
 
+class BarQueueGenerator:
+    def __init__(self):
+        #self.interval_list = interval_list
+        self.barq = {}
+
+    def update_bar(self, bar: BarData):
+        if bar.vt_symbol not in self.barq:
+            self.barq[bar.vt_symbol] = {}
+            if bar.interval not in self.barq[bar.vt_symbol]:
+                self.barq[bar.vt_symbol][bar.interval] = BarQueue(interval=bar.interval, vt_symbol=bar.vt_symbol)
+
+        self.barq[bar.vt_symbol][bar.interval].update_bar(bar=bar)
+
+
+class BarQueue:
+    def __init__(self, interval: Interval, vt_symbol: str):
+        self.vt_symbol = vt_symbol
+        self.interval = interval
+        self.bars = []
+        self.last_bar = None
+
+    def update_bar(self, bar: BarData):
+        if bar.vt_symbol == self.vt_symbol and bar.interval == self.interval:
+            self.last_bar = bar
+            if len(self.bars) == 0:
+                self.bars.append(self.last_bar)
+            else:
+                if self.last_bar.open_time > self.bars[-1].open_time:
+                    self.bars.append(self.last_bar)
+                elif self.last_bar.open_time == self.bars[-1].open_time:
+                    self.bars[-1] = self.last_bar
+                else:
+                    return
+        else:
+            return
+
+
 class BarGenerator:
     """
     For:
