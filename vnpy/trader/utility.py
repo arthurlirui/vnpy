@@ -389,18 +389,6 @@ class MarketEventGenerator:
         return is_event
 
 
-class DistGenerator:
-    '''
-    For
-    1. generate and update dist by tick data
-    '''
-    def __init__(self, on_dist: Callable, vol: float = 1.0):
-        pass
-
-    def update_tick(self, tick: TickData):
-        pass
-
-
 class VlineGenerator:
     '''
     For
@@ -683,11 +671,10 @@ class VlineQueue:
     def update_trade(self, trade: TradeData):
         self.last_trade = trade
         self.push(trade=trade)
-        sz = self.size()
+        #sz = self.size()
         while self.size() > self.max_vol:
-            t = self.pop()
-            sz = self.size()
-            print(t)
+            self.pop()
+            #sz = self.size()
 
     def init_kline(self, bar: BarData):
         trade = bar2trade(bar)
@@ -945,6 +932,9 @@ class BarQueue:
                     return
         else:
             return
+
+    def __len__(self):
+        return len(self.bars)
 
 
 class BarGenerator:

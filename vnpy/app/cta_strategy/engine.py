@@ -22,6 +22,9 @@ from vnpy.trader.object import (
     BarData,
     ContractData
 )
+
+from vnpy.event.engine import EVENT_TIMER
+
 from vnpy.trader.event import (
     EVENT_TICK,
     EVENT_ORDER,
@@ -84,11 +87,9 @@ class CtaEngine(BaseEngine):
         self.classes = {}           # class_name: stategy_class
         self.strategies = {}        # strategy_name: strategy
 
-        self.symbol_strategy_map = defaultdict(
-            list)                   # vt_symbol: strategy list
+        self.symbol_strategy_map = defaultdict(list)  # vt_symbol: strategy list
         self.orderid_strategy_map = {}  # vt_orderid: strategy
-        self.strategy_orderid_map = defaultdict(
-            set)                    # strategy_name: orderid list
+        self.strategy_orderid_map = defaultdict(set)   # strategy_name: orderid list
 
         self.stop_order_count = 0   # for generating stop_orderid
         self.stop_orders = {}       # stop_orderid: stop_order
@@ -124,6 +125,8 @@ class CtaEngine(BaseEngine):
         self.event_engine.register(EVENT_POSITION, self.process_position_event)
         self.event_engine.register(EVENT_MARKET_TRADE, self.process_market_trade_event)
         self.event_engine.register(EVENT_KLINE, self.process_kline_event)
+        self.event_engine.register(EVENT_TIMER, self.process_timer_event)
+
 
     def init_rqdata(self):
         """
@@ -246,6 +249,11 @@ class CtaEngine(BaseEngine):
 
         # Update GUI
         self.put_strategy_event(strategy)
+
+    def process_timer_event(self, event: Event):
+        for sn in self.strategies:
+            if self.strategies[sn].inited:
+                self.call_strategy_func(self.strategies[sn], self.strategies[sn].on_timer)
 
     def process_position_event(self, event: Event):
         """"""

@@ -88,67 +88,13 @@ class GridVline(CtaTemplate):
 
         self.symbols = ['btcusdt']
         self.exchanges = ['HUOBI']
-
-        #self.is_vline_inited = False
         self.on_init()
-        #self.is_vline_inited = True
-
-        # init setting
-        #pprint(setting)
-        #self.init_setting(setting=setting)
-
-        # init parameters
-        #self.init_parameter(parameters=self.parameters)
-        # could load parameters from xml files
-        #self.init_parameter(parameters=self.parameters)
-
-        # Variables
-        #self.timer_count = 0
-        #self.vt_orderid = ""
-        #self.pos = 0
-        #self.last_tick = None
-
-        if False:
-            # init all market data
-            for s in self.symbols:
-                for ex in self.exchanges:
-                    self.subscribe(s+'.'+ex)
-
-        # init vline generator
-        if False:
-            self.vg = {}
-            self.vline_buf = {}
-            self.init_vline_generator()
-
-        if False:
-            pass
-
-
-        # inti market event generator
-        #self.meg = None
-        #self.init_market_event_generator()
-
-        # system variables
-        #self.last_tick = None
-        #self.last_vline = None
-        #self.last_market_event = None
-
-        # cache data from market
-        #self.ticks = []
-        #self.vlines = []
-        #self.market_events = []
-        #self.vline_len = 0
-
-        # init local balance and order from market
-        #self.put_parameters_event()
-        #self.put_variables_event()
 
     def on_init(self):
         """
         Callback when strategy is inited.
         """
         self.write_log("策略初始化")
-
         self.vqg = {}
         self.init_vline_queue_generator()
 
@@ -158,10 +104,7 @@ class GridVline(CtaTemplate):
         self.init_data()
         self.is_vline_inited = True
 
-        if False:
-            for vts in self.vqg:
-                for vol in self.vqg[vts].vol_list:
-                    print(vts, vol, self.vqg[vts].get_vq(vol))
+        self.timer_count = 0
 
     def on_start(self):
         """
@@ -218,7 +161,7 @@ class GridVline(CtaTemplate):
         self.cta_engine.load_market_trade(self.vt_symbol, callback=callback)
 
     def on_init_tick(self, tick: TickData):
-        print(tick)
+       pass
 
     def on_init_market_trade(self, trade: TradeData):
         for vt_symbol in self.vqg:
@@ -263,9 +206,6 @@ class GridVline(CtaTemplate):
                 vline_vol_list = self.market_params[s]['vline_vol_list']
                 self.vg[vt_sym] = VlineGenerator(on_vline=self.on_vline, vol_list=vline_vol_list)
 
-    def init_market_event_generator(self):
-        pass
-
     def on_tick(self, tick: TickData):
         """
         Callback of new tick data update.
@@ -285,75 +225,11 @@ class GridVline(CtaTemplate):
         if self.is_vline_inited:
             self.vqg[trade.vt_symbol].update_market_trades(trade=trade)
 
-            # if True:
-            #     print(trade)
-            #     vol_pos = self.check_vline_pos(trade.price)
-            #     pprint(vol_pos)
-            #     open_close_price = self.check_open_close_price()
-            #     pprint(open_close_price)
-            #     print()
-            #
-            # if False and trade.vt_symbol == 'btcusdt.HUOBI':
-            #     #print(len(self.vg[trade.vt_symbol].trades), trade)
-            #     #print(self.vg[trade.vt_symbol].vline)
-            #     for vb in self.vqg[trade.vt_symbol].vq:
-            #         print(vb, self.vqg[trade.vt_symbol].vq[vb].vol)
-            #         #if not self.vqg[trade.vt_symbol].vline_buf[vb].is_empty():
-            #             #print(vb, len(self.vqg[trade.vt_symbol].vlines[vb]), self.vqg[trade.vt_symbol].vline_buf[vb])
-            #             #print(f'Size:{len(self.vg[trade.vt_symbol].vlines[vb])} Vol:{vb}')
-            #     print()
-
     def on_kline(self, bar: BarData):
         self.kqg.update_bar(bar=bar)
-        print(bar)
-
-    def on_vline(self, vline: VlineData, vol: int):
-        '''
-        1. update vline and vline_buf
-        2. update market event
-        3. update market action
-        4. update account
-        '''
-        #self.last_vline = self.vg[self.vt_symbol].vline
-        #self.vlines = self.vg.vlines
-        #self.vline_buf = self.vg.vline_buf
-        #print(self.last_vline)
-
-        print(vol, vline)
-        #if len(self.vg[self.vt_symbol].vlines) > 0:
-        #    print(len(self.vg[self.vt_symbol].vlines), self.vg[self.vt_symbol].vlines[-1])
-
-        # update market event
-        #self.update_event()
-
-        # update position
-        #self.update_position()
+        #print(len(self.kqg.barq[bar.vt_symbol][bar.interval]), bar)
 
     def on_timer(self):
         """"""
-        if not self.last_tick:
-            return
-
+        print(self.timer_count)
         self.timer_count += 1
-        if self.timer_count < self.interval:
-            self.put_variables_event()
-            return
-        self.timer_count = 0
-        self.pos += 1
-        # Update UI
-        self.put_variables_event()
-
-    def on_order(self, order: OrderData):
-        """"""
-        if not order.is_active():
-            self.vt_orderid = ""
-            self.put_variables_event()
-
-    def on_trade(self, trade: TradeData):
-        """"""
-        if trade.direction == Direction.LONG:
-            self.pos += trade.volume
-        else:
-            self.pos -= trade.volume
-
-        self.put_variables_event()
