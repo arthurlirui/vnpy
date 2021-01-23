@@ -90,6 +90,11 @@ class GridVline(CtaTemplate):
         self.exchanges = ['HUOBI']
         self.on_init()
 
+        # data buffer
+        self.trade_buf = []
+        self.kline_buf = []
+        self.tick_buf = []
+
     def on_init(self):
         """
         Callback when strategy is inited.
@@ -100,10 +105,10 @@ class GridVline(CtaTemplate):
 
         self.kqg = BarQueueGenerator()
 
-        self.is_vline_inited = False
+        self.is_data_inited = False
         self.init_data()
-        self.is_vline_inited = True
-
+        self.is_data_inited = True
+        self.last_tick = None
         self.timer_count = 0
 
     def on_start(self):
@@ -213,23 +218,27 @@ class GridVline(CtaTemplate):
         1. update tick: last_tick, vline_buf
         2. update vline: (1) new vline (2) multi vline
         """
-        if not self.is_vline_inited:
-            pass
-
-        if not tick.last_price:
-            return
-
+        self.tick_buf.append(tick)
         self.last_tick = tick
 
     def on_market_trade(self, trade: TradeData):
-        if self.is_vline_inited:
-            self.vqg[trade.vt_symbol].update_market_trades(trade=trade)
+        self.trade_buf.append(trade)
 
     def on_kline(self, bar: BarData):
-        self.kqg.update_bar(bar=bar)
-        #print(len(self.kqg.barq[bar.vt_symbol][bar.interval]), bar)
+        self.kline_buf.append(bar)
 
     def on_timer(self):
         """"""
+        if self.is_data_inited:
+            for t in self.trade_buf:
+                self.vqg[t.vt_symbol].update_market_trades(trade=t)
+            self.trade_buf = []
+
+            for bar in self.kline_buf:
+                self.kqg.update_bar(bar=bar)
+            self.kline_buf = []
+
+            self.tick_buf = []
+
         print(self.timer_count)
         self.timer_count += 1
