@@ -88,12 +88,15 @@ class GridVline(CtaTemplate):
 
         self.symbols = ['btcusdt']
         self.exchanges = ['HUOBI']
-        self.on_init()
 
         # data buffer
         self.trade_buf = []
         self.kline_buf = []
         self.tick_buf = []
+
+        self.on_init()
+
+
 
     def on_init(self):
         """
@@ -212,12 +215,6 @@ class GridVline(CtaTemplate):
                 self.vg[vt_sym] = VlineGenerator(on_vline=self.on_vline, vol_list=vline_vol_list)
 
     def on_tick(self, tick: TickData):
-        """
-        Callback of new tick data update.
-        update list:
-        1. update tick: last_tick, vline_buf
-        2. update vline: (1) new vline (2) multi vline
-        """
         self.tick_buf.append(tick)
         self.last_tick = tick
 
@@ -240,5 +237,8 @@ class GridVline(CtaTemplate):
 
             self.tick_buf = []
 
-        print(self.timer_count)
+        print(self.last_tick)
+        for vts in self.kqg.barq:
+            for intv in self.kqg.barq[vts]:
+                print(self.kqg.barq[vts][intv].bars[-1])
         self.timer_count += 1
