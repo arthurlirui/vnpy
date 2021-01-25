@@ -36,7 +36,8 @@ from vnpy.trader.object import (
     OrderRequest,
     CancelRequest,
     SubscribeRequest,
-    HistoryRequest
+    HistoryRequest,
+    BalanceData
 )
 
 
@@ -214,6 +215,7 @@ class HuobiRestApi(RestClient):
         self.key: str = ""
         self.secret: str = ""
         self.account_id: str = ""
+        self.accounts = {}
 
         self.order_count = 0
 
@@ -294,11 +296,13 @@ class HuobiRestApi(RestClient):
 
     def query_account(self) -> None:
         """"""
-        self.add_request(
-            method="GET",
-            path="/v1/account/accounts",
-            callback=self.on_query_account
-        )
+        self.add_request(method="GET", path="/v1/account/accounts", callback=self.on_query_account)
+
+    def query_balance(self) -> None:
+        """"""
+        for accid in self.accounts:
+            accpath = f'/v1/account/accounts/{accid}/balance'
+            self.add_request(method="GET", path=accpath, callback=self.on_query_balance)
 
     def query_order(self) -> None:
         """"""
@@ -491,27 +495,41 @@ class HuobiRestApi(RestClient):
             return
 
         for d in data["data"]:
-            if d["type"] == "spot":
-                self.account_id = d["id"]
-                self.gateway.write_log(f"账户代码{self.account_id}查询成功")
-            if d["type"] == "margin":
-                account_id = d['id']
-                if d['state'] == "working":
-                    self.gateway.write_log(f"Margin account {account_id} success")
-                else:
-                    self.gateway.write_log(f"Margin account {account_id} failure")
-            if d["type"] == "otc":
-                account_id = d['id']
-                if d['state'] == "working":
-                    self.gateway.write_log(f"OTC account {account_id} success")
-                else:
-                    self.gateway.write_log(f"OTC account {account_id} failure")
-            if d["type"] == "point":
-                account_id = d['id']
-                if d['state'] == "working":
-                    self.gateway.write_log(f"Point account {account_id} success")
-                else:
-                    self.gateway.write_log(f"OTC account {account_id} failure")
+            account_id = d["id"]
+            account_state = d["state"]
+            account_type = d["type"]
+            account_subtype = d["subtype"]
+            ad = AccountData(accountid=account_id,
+                             state=account_state,
+                             account_type=account_type,
+                             account_subtype=account_subtype)
+            self.gateway.on_account(account=ad)
+            self.accounts[ad.accountid] = ad
+            self.gateway.write_log(f"Account:{account_type} id:{account_id} is {account_state}")
+
+    def on_query_balance(self, data: dict) -> None:
+        if self.check_error(data, "Query Balance"):
+            return
+        rawdata = data['data']
+        accid = rawdata['id']
+        acctype = rawdata['type']
+        accstatus = rawdata['status']
+        ballist = rawdata['list']
+        for bal in ballist:
+            symbol = bal['currency']
+            exchange_name = self.gateway_name
+            baltype = bal['type']
+            if baltype == 'frozen':
+                frozen = float(bal['balance'])
+                available = None
+            elif baltype == 'trade':
+                frozen = None
+                available = float(bal['balance'])
+
+            bd = BalanceData(symbol=symbol, exchange=exchange_name,
+                             frozen=frozen, available=available)
+            self.accounts[accid].update_balance(balance_data=bd)
+            self.gateway.on_account(account=self.accounts[accid])
 
     def on_query_order(self, data: dict, request: Request) -> None:
         """"""

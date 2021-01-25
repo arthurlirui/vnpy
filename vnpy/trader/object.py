@@ -560,16 +560,16 @@ class OrderData(BaseData):
 class BalanceData(BaseData):
     symbol: str
     exchange: Exchange
-    volume: float = 0
-    available: float = 0
-    frozen: float = 0
-    price: float = 0
+    volume: float = None
+    available: float = None
+    frozen: float = None
+    price: float = None
 
     def __post_init__(self):
         """"""
         self.vt_symbol = f"{self.symbol}.{self.exchange.value}"
-        self.available = self.volume
-        self.frozen = self.volume - self.available
+        #self.available = self.volume
+        #self.frozen = self.volume - self.available
         #self.vt_balanceid = f"{self.vt_symbol}.{self.direction.value}"
 
     def __str__(self):
@@ -607,12 +607,28 @@ class AccountData(BaseData):
 
     accountid: str
 
-    balance: float = 0
-    frozen: float = 0
+    state: str = None
+    account_type: str = None
+    account_subtype: str = None
+
+    balance = {}
+    #balance: float = 0
+    #frozen: float = 0
+
+    def update_balance(self, balance_data: BalanceData) -> None:
+        if balance_data.vt_symbol in self.balance:
+            if balance_data.frozen:
+                self.balance[balance_data.vt_symbol].frozen = balance_data.frozen
+            if balance_data.available:
+                self.balance[balance_data.vt_symbol].available = balance_data.available
+            if self.balance[balance_data.vt_symbol].frozen and self.balance[balance_data.vt_symbol].available:
+                self.balance[balance_data.vt_symbol].volume = self.balance[balance_data.vt_symbol].frozen+self.balance[balance_data.vt_symbol].available
+        else:
+            self.balance[balance_data.vt_symbol] = balance_data
 
     def __post_init__(self):
         """"""
-        self.available = self.balance - self.frozen
+        #self.available = self.balance - self.frozen
         self.vt_accountid = f"{self.gateway_name}.{self.accountid}"
 
 
