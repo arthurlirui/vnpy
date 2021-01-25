@@ -31,7 +31,8 @@ from vnpy.trader.event import (
     EVENT_TRADE,
     EVENT_POSITION,
     EVENT_MARKET_TRADE,
-    EVENT_KLINE
+    EVENT_KLINE,
+    EVENT_ACCOUNT
 )
 from vnpy.trader.constant import (
     Direction,
@@ -126,7 +127,7 @@ class CtaEngine(BaseEngine):
         self.event_engine.register(EVENT_MARKET_TRADE, self.process_market_trade_event)
         self.event_engine.register(EVENT_KLINE, self.process_kline_event)
         self.event_engine.register(EVENT_TIMER, self.process_timer_event)
-
+        self.event_engine.register(EVENT_ACCOUNT, self.process_account_event)
 
     def init_rqdata(self):
         """
@@ -162,6 +163,9 @@ class CtaEngine(BaseEngine):
         for strategy in strategies:
             if strategy.inited:
                 self.call_strategy_func(strategy, strategy.on_kline, bar)
+
+    def process_account_event(self, event: Event):
+        pass
 
     def process_market_trade_event(self, event: Event):
         market_trade = event.data
