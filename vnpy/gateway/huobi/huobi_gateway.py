@@ -31,6 +31,8 @@ from vnpy.trader.object import (
     OrderData,
     TradeData,
     AccountData,
+    BalanceData,
+    AccountInfo,
     ContractData,
     BarData,
     OrderRequest,
@@ -179,7 +181,7 @@ class HuobiGateway(BaseGateway):
 
     def query_account(self) -> None:
         """"""
-        pass
+        return self.rest_api.query_account()
 
     def query_position(self) -> None:
         """"""
@@ -279,6 +281,8 @@ class HuobiRestApi(RestClient):
         self.query_account()
         self.query_order()
         self.query_market_status()
+        self.query_account()
+        self.query_balance()
 
     def query_market_status(self):
         self.add_request(
@@ -294,14 +298,14 @@ class HuobiRestApi(RestClient):
             callback=self.on_query_market_summary
         )
 
-    def query_account(self) -> None:
+    def query_account(self) -> List[AccountData]:
         """"""
         self.add_request(method="GET", path="/v1/account/accounts", callback=self.on_query_account)
 
     def query_balance(self) -> None:
         """"""
         for accid in self.accounts:
-            accpath = f'/v1/account/accounts/{accid}/balance'
+            accpath = f'/v1/account/accounts/{self.account_id}/balance'
             self.add_request(method="GET", path=accpath, callback=self.on_query_balance)
 
     def query_order(self) -> None:
@@ -489,23 +493,27 @@ class HuobiRestApi(RestClient):
         }
         '''
 
-    def on_query_account(self, data: dict, request: Request) -> None:
+    def on_query_account(self, data: dict, request: Request = None) -> None:
         """"""
         if self.check_error(data, "查询账户"):
             return
-
+        accounts = []
         for d in data["data"]:
             account_id = d["id"]
             account_state = d["state"]
             account_type = d["type"]
             account_subtype = d["subtype"]
-            ad = AccountData(accountid=account_id,
-                             state=account_state,
+            ad = AccountData(gateway_name=self.gateway_name,
+                             exchange=Exchange.HUOBI,
+                             account_id=account_id,
+                             account_state=account_state,
                              account_type=account_type,
                              account_subtype=account_subtype)
-            self.gateway.on_account(account=ad)
-            self.accounts[ad.accountid] = ad
-            self.gateway.write_log(f"Account:{account_type} id:{account_id} is {account_state}")
+            self.accounts[ad.account_id] = ad
+            print('huobi_gateway:', ad)
+            #self.gateway.on_account(ad)
+            accounts.append(ad)
+        return accounts
 
     def on_query_balance(self, data: dict) -> None:
         if self.check_error(data, "Query Balance"):
@@ -516,8 +524,8 @@ class HuobiRestApi(RestClient):
         accstatus = rawdata['status']
         ballist = rawdata['list']
         for bal in ballist:
-            symbol = bal['currency']
-            exchange_name = self.gateway_name
+            currency = bal['currency']
+            exchange = Exchange.HUOBI
             baltype = bal['type']
             if baltype == 'frozen':
                 frozen = float(bal['balance'])
@@ -526,10 +534,12 @@ class HuobiRestApi(RestClient):
                 frozen = None
                 available = float(bal['balance'])
 
-            bd = BalanceData(symbol=symbol, exchange=exchange_name,
+            bd = BalanceData(currency=currency, exchange=exchange,
+                             account_type=acctype, account_id=accid, account_state=accstatus,
                              frozen=frozen, available=available)
-            self.accounts[accid].update_balance(balance_data=bd)
-            self.gateway.on_account(account=self.accounts[accid])
+            #self.accounts[accid].update_balance(balance_data=bd)
+            #self.gateway.on_account(account=self.accounts[accid])
+            self.gateway.on_balance(balance_data=bd)
 
     def on_query_order(self, data: dict, request: Request) -> None:
         """"""
@@ -834,15 +844,23 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
         elif "accounts" in ch:
             self.on_account(packet["data"])
 
+    def on_balance(self, data: dict) -> None:
+        pass
+
     def on_account(self, data: dict) -> None:
         """"""
         if not data:
             return
 
+        print(data)
         currency = data["currency"]
-
+        accoundid = data["accountId"]
+        #balance = data['balance']
+        #available = data['available']
         change_type = data["changeType"]
-        #print(data)
+        accound_type = data["accountType"]
+        change_time = data["changeTime"]
+
         if not change_type:
             balance = float(data["balance"])
             if data["available"]:
@@ -864,7 +882,12 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
             currency_balance[currency] = balance
 
         account = AccountData(
+            exchange=Exchange.HUOBI,
+            account_id=accoundid,
             accountid=currency,
+            account_type=accound_type,
+            account_subtype=None,
+            account_state=None,
             balance=balance,
             frozen=frozen,
             gateway_name=self.gateway_name,

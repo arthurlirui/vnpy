@@ -14,6 +14,7 @@ import numpy as np
 import talib
 
 from .object import BarData, TickData, VlineData, TradeData, DistData, MarketEventData, Direction
+from .object import AccountData, BalanceData
 from .constant import Exchange, Interval, MarketEvent
 
 
@@ -935,6 +936,17 @@ class BarQueue:
 
     def __len__(self):
         return len(self.bars)
+
+
+class BalanceManager:
+    def __init__(self, accound_id: str):
+        self.accound_id = None
+        self.balance = {}
+
+    def update_balance(self, balance_data: BalanceData):
+        if balance_data.accountid == self.accound_id:
+            accdata.v
+            self.balance[accid]
 
 
 class BarGenerator:

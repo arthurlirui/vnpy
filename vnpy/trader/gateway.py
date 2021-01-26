@@ -17,6 +17,7 @@ from .event import (
     EVENT_LOG,
     EVENT_KLINE,
     EVENT_MARKET_TRADE,
+    EVENT_BALANCE
 )
 from .object import (
     TickData,
@@ -24,6 +25,7 @@ from .object import (
     TradeData,
     PositionData,
     AccountData,
+    BalanceData,
     ContractData,
     LogData,
     OrderRequest,
@@ -137,8 +139,13 @@ class BaseGateway(ABC):
         Account event push.
         Account event of a specific vt_accountid is also pushed.
         """
+        print('gateway', account)
         self.on_event(EVENT_ACCOUNT, account)
-        self.on_event(EVENT_ACCOUNT + account.vt_accountid, account)
+        self.on_event(EVENT_ACCOUNT + str(account.account_id), account)
+
+    def on_balance(self, balance_data: BalanceData) -> None:
+        self.on_event(EVENT_BALANCE, balance_data)
+        self.on_event(EVENT_BALANCE+balance_data.vt_symbol, balance_data)
 
     def on_log(self, log: LogData) -> None:
         """
@@ -263,6 +270,9 @@ class BaseGateway(ABC):
         """
         Query bar history data.
         """
+        pass
+
+    def query_account(self) -> List[AccountData]:
         pass
 
     def get_default_setting(self) -> Dict[str, Any]:

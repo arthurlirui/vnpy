@@ -557,23 +557,39 @@ class OrderData(BaseData):
 
 
 @dataclass
-class BalanceData(BaseData):
-    symbol: str
+class AccountInfo(BaseData):
     exchange: Exchange
+    account_id: str
+    account_type: str
+    account_subtype: str
+    account_state: str
+
+
+@dataclass
+class BalanceData(BaseData):
+    exchange: Exchange
+
+    account_id: str
+    account_type: str
+    account_state: str
+    currency: str
+
     volume: float = None
     available: float = None
     frozen: float = None
-    price: float = None
+    #price: float = None
 
     def __post_init__(self):
         """"""
-        self.vt_symbol = f"{self.symbol}.{self.exchange.value}"
+        self.vt_symbol = f"{self.currency}.{self.exchange.value}"
+        if self.available and self.frozen:
+            self.volume = self.available + self.frozen
         #self.available = self.volume
         #self.frozen = self.volume - self.available
         #self.vt_balanceid = f"{self.vt_symbol}.{self.direction.value}"
 
     def __str__(self):
-        return '%s %s V:%.3f A:%.3f F:%.3f P:%.3f' % (self.symbol, self.exchange.value, self.volume, self.available, self.frozen, self.price)
+        return '%s %s V:%.3f A:%.3f F:%.3f' % (self.currency, self.exchange.value, self.volume, self.available, self.frozen)
 
 
 @dataclass
@@ -601,35 +617,45 @@ class PositionData(BaseData):
 @dataclass
 class AccountData(BaseData):
     """
-    Account data contains information about balance, frozen and
-    available.
+    Account data contains information about balance, frozen and available.
     """
 
-    accountid: str
+    exchange: Exchange
+    account_id: str
+    account_type: str
+    account_subtype: str
+    account_state: str
 
-    state: str = None
-    account_type: str = None
-    account_subtype: str = None
 
-    balance = {}
-    #balance: float = 0
-    #frozen: float = 0
+    accountid: str = None
+    #state: str = None
+    #account_type: str = None
+    #account_subtype: str = None
 
-    def update_balance(self, balance_data: BalanceData) -> None:
-        if balance_data.vt_symbol in self.balance:
-            if balance_data.frozen:
-                self.balance[balance_data.vt_symbol].frozen = balance_data.frozen
-            if balance_data.available:
-                self.balance[balance_data.vt_symbol].available = balance_data.available
-            if self.balance[balance_data.vt_symbol].frozen and self.balance[balance_data.vt_symbol].available:
-                self.balance[balance_data.vt_symbol].volume = self.balance[balance_data.vt_symbol].frozen+self.balance[balance_data.vt_symbol].available
-        else:
-            self.balance[balance_data.vt_symbol] = balance_data
+    #balance = {}
+    balance: float = 0
+    frozen: float = 0
+
+    # def update_balance(self, balance_data: BalanceData) -> None:
+    #     if balance_data.vt_symbol in self.balance:
+    #         if balance_data.frozen:
+    #             self.balance[balance_data.vt_symbol].frozen = balance_data.frozen
+    #         if balance_data.available:
+    #             self.balance[balance_data.vt_symbol].available = balance_data.available
+    #         if self.balance[balance_data.vt_symbol].frozen and self.balance[balance_data.vt_symbol].available:
+    #             self.balance[balance_data.vt_symbol].volume = self.balance[balance_data.vt_symbol].frozen+self.balance[balance_data.vt_symbol].available
+    #     else:
+    #         self.balance[balance_data.vt_symbol] = balance_data
 
     def __post_init__(self):
         """"""
-        #self.available = self.balance - self.frozen
+        self.available = self.balance - self.frozen
         self.vt_accountid = f"{self.gateway_name}.{self.accountid}"
+
+    def __str__(self):
+        s1 = f'{self.exchange.value} {self.account_id} {self.account_type} {self.account_subtype} {self.account_state}'
+        s2 = f' {self.balance} {self.available} {self.frozen}'
+        return s1+s2
 
 
 @dataclass

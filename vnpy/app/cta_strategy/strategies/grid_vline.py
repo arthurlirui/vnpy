@@ -1,6 +1,6 @@
 from vnpy.trader.constant import Direction
 from vnpy.trader.object import TradeData, OrderData, TickData
-from vnpy.trader.object import VlineData, BarData, PositionData, MarketEventData
+from vnpy.trader.object import VlineData, BarData, PositionData, MarketEventData, AccountData, BalanceData
 from vnpy.trader.engine import BaseEngine
 from vnpy.app.algo_trading import AlgoTemplate
 from vnpy.trader.utility import VlineGenerator, MarketEventGenerator, VlineQueueGenerator, BarQueueGenerator
@@ -28,6 +28,7 @@ from vnpy.app.cta_strategy import (
     OrderData,
     BarGenerator,
     ArrayManager,
+
 )
 
 
@@ -96,8 +97,6 @@ class GridVline(CtaTemplate):
 
         self.on_init()
 
-
-
     def on_init(self):
         """
         Callback when strategy is inited.
@@ -113,6 +112,8 @@ class GridVline(CtaTemplate):
         self.is_data_inited = True
         self.last_tick = None
         self.timer_count = 0
+
+
 
     def on_start(self):
         """
@@ -139,6 +140,18 @@ class GridVline(CtaTemplate):
         self.load_bar(days=7, interval=Interval.HOUR, callback=self.on_kline)
         self.load_bar(days=7, interval=Interval.HOUR_4, callback=self.on_kline)
         self.load_bar(days=60, interval=Interval.DAILY, callback=self.on_kline)
+
+        # load account and balance
+        self.load_account()
+
+    def init_account(self):
+        pass
+
+    def init_balance(self):
+        pass
+
+    def init_account_trade(self):
+        pass
 
     def check_vline_pos(self, price):
         vol_pos = {}
@@ -167,6 +180,10 @@ class GridVline(CtaTemplate):
 
     def load_market_trade(self, callback: Callable):
         self.cta_engine.load_market_trade(self.vt_symbol, callback=callback)
+
+    def load_account(self):
+        account = self.cta_engine.load_account_data(self.vt_symbol)
+        #print(account)
 
     def on_init_tick(self, tick: TickData):
        pass
@@ -224,6 +241,17 @@ class GridVline(CtaTemplate):
     def on_kline(self, bar: BarData):
         self.kline_buf.append(bar)
 
+    def on_account(self, accdata: AccountData):
+        print('gv', accdata)
+        #print(accdata.accountid)
+        #print(accdata.account_type, accdata.account_subtype)
+
+    def on_balance(self, balance_data, BalanceData):
+        print(balance_data)
+
+    def make_decision(self):
+        pass
+
     def on_timer(self):
         """"""
         if self.is_data_inited:
@@ -237,8 +265,13 @@ class GridVline(CtaTemplate):
 
             self.tick_buf = []
 
-        print(self.last_tick)
+        #print(self.last_tick)
+
+        #self.send_order()
+
         for vts in self.kqg.barq:
             for intv in self.kqg.barq[vts]:
-                print(self.kqg.barq[vts][intv].bars[-1])
+                #print(self.kqg.barq[vts][intv].bars[-1])
+                pass
         self.timer_count += 1
+

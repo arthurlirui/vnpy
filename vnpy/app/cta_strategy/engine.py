@@ -32,7 +32,8 @@ from vnpy.trader.event import (
     EVENT_POSITION,
     EVENT_MARKET_TRADE,
     EVENT_KLINE,
-    EVENT_ACCOUNT
+    EVENT_ACCOUNT,
+    EVENT_BALANCE
 )
 from vnpy.trader.constant import (
     Direction,
@@ -128,6 +129,7 @@ class CtaEngine(BaseEngine):
         self.event_engine.register(EVENT_KLINE, self.process_kline_event)
         self.event_engine.register(EVENT_TIMER, self.process_timer_event)
         self.event_engine.register(EVENT_ACCOUNT, self.process_account_event)
+        self.event_engine.register(EVENT_BALANCE, self.process_balance_event)
 
     def init_rqdata(self):
         """
@@ -165,7 +167,20 @@ class CtaEngine(BaseEngine):
                 self.call_strategy_func(strategy, strategy.on_kline, bar)
 
     def process_account_event(self, event: Event):
-        pass
+        accdata = event.data
+        print('pcs', accdata)
+        for vt_symbol in self.symbol_strategy_map:
+            strategies = self.symbol_strategy_map[vt_symbol]
+            for strategy in strategies:
+                if strategy.inited:
+                    self.call_strategy_func(strategy, strategy.on_account, accdata)
+
+    def process_balance_event(self, event: Event):
+        balance_data = event.data
+        for vt_symbol in self.symbol_strategy_map:
+            strategy = self.symbol_strategy_map[vt_symbol]
+            if strategy.inited:
+                self.call_strategy_func(strategy, strategy.on_balance, balance_data)
 
     def process_market_trade_event(self, event: Event):
         market_trade = event.data
@@ -625,6 +640,11 @@ class CtaEngine(BaseEngine):
 
         for tick in ticks:
             callback(tick)
+
+    def load_account_data(self, vt_symbol: str):
+        contract = self.main_engine.get_contract(vt_symbol)
+        accounts = self.main_engine.query_account(gateway_name=contract.gateway_name)
+        return accounts
 
     def load_market_trade(self, vt_symbol: str, callback: Callable):
         contract = self.main_engine.get_contract(vt_symbol)

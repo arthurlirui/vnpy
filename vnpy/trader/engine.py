@@ -232,6 +232,13 @@ class MainEngine:
         else:
             return None
 
+    def query_account(self, gateway_name: str):
+        gateway = self.get_gateway(gateway_name)
+        if gateway:
+            return gateway.query_account()
+        else:
+            return None
+
     def close(self) -> None:
         """
         Make sure every gateway and app is closed properly before
