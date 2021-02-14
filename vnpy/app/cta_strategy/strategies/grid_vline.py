@@ -28,7 +28,6 @@ from vnpy.app.cta_strategy import (
     OrderData,
     BarGenerator,
     ArrayManager,
-
 )
 
 
@@ -95,6 +94,10 @@ class GridVline(CtaTemplate):
         self.kline_buf = []
         self.tick_buf = []
 
+        # working account: spot account
+        self.account_info = None
+        self.balance_info = None
+
         self.on_init()
 
     def on_init(self):
@@ -109,11 +112,9 @@ class GridVline(CtaTemplate):
 
         self.is_data_inited = False
         self.init_data()
-        self.is_data_inited = True
+
         self.last_tick = None
         self.timer_count = 0
-
-
 
     def on_start(self):
         """
@@ -143,6 +144,8 @@ class GridVline(CtaTemplate):
 
         # load account and balance
         self.load_account()
+
+        self.is_data_inited = True
 
     def init_account(self):
         pass
@@ -181,9 +184,22 @@ class GridVline(CtaTemplate):
     def load_market_trade(self, callback: Callable):
         self.cta_engine.load_market_trade(self.vt_symbol, callback=callback)
 
-    def load_account(self):
-        account = self.cta_engine.load_account_data(self.vt_symbol)
-        #print(account)
+    def load_account(self, account_type='spot'):
+        accounts = self.cta_engine.load_account_data(self.vt_symbol)
+        account_info = None
+        balance_info = None
+        for acc in accounts:
+            if acc.account_type == account_type:
+                account_id = acc.account_id
+                account_info = acc
+                balance_info = self.cta_engine.load_balance_data(vt_symbol=self.vt_symbol, account_id=account_id)
+
+        if account_info and balance_info:
+            self.account_info = account_info
+            self.balance_info = balance_info
+
+        for d in self.balance_info.data:
+            print(d, self.balance_info.data[d])
 
     def on_init_tick(self, tick: TickData):
        pass
@@ -216,7 +232,6 @@ class GridVline(CtaTemplate):
         for s in self.symbols:
             for ex in self.exchanges:
                 vt_sym = s + '.' + ex
-                #vline_vol = self.market_params[s]['vline_vol']
                 vline_vol_list = self.market_params[s]['vline_vol_list']
                 bin_size = self.market_params[s]['bin_size']
                 self.vqg[vt_sym] = VlineQueueGenerator(vol_list=vline_vol_list,

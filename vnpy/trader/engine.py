@@ -37,7 +37,8 @@ from .object import (
     PositionData,
     AccountData,
     ContractData,
-    Exchange
+    Exchange,
+    BalanceRequest
 )
 from .setting import SETTINGS
 from .utility import get_folder_path, TRADER_DIR
@@ -236,6 +237,13 @@ class MainEngine:
         gateway = self.get_gateway(gateway_name)
         if gateway:
             return gateway.query_account()
+        else:
+            return None
+
+    def query_balance(self, req: BalanceRequest, gateway_name: str):
+        gateway = self.get_gateway(gateway_name)
+        if gateway:
+            return gateway.query_balance(req=req)
         else:
             return None
 

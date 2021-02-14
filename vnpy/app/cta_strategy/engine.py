@@ -17,10 +17,13 @@ from vnpy.trader.object import (
     OrderRequest,
     SubscribeRequest,
     HistoryRequest,
+    BalanceRequest,
     LogData,
     TickData,
     BarData,
-    ContractData
+    ContractData,
+    BalanceInfo,
+    AccountInfo
 )
 
 from vnpy.event.engine import EVENT_TIMER
@@ -643,8 +646,18 @@ class CtaEngine(BaseEngine):
 
     def load_account_data(self, vt_symbol: str):
         contract = self.main_engine.get_contract(vt_symbol)
+        # load spot margin super-margin otc and point accounts
         accounts = self.main_engine.query_account(gateway_name=contract.gateway_name)
+
+        # load account balance for each account
         return accounts
+
+    def load_balance_data(self, vt_symbol: str, account_id: str) -> BalanceInfo:
+        contract = self.main_engine.get_contract(vt_symbol)
+        # load spot margin super-margin otc and point accounts
+        req = BalanceRequest(exchange=contract.exchange, account_id=account_id)
+        balance_info = self.main_engine.query_balance(req=req, gateway_name=contract.gateway_name)
+        return balance_info
 
     def load_market_trade(self, vt_symbol: str, callback: Callable):
         contract = self.main_engine.get_contract(vt_symbol)

@@ -33,6 +33,8 @@ from vnpy.trader.object import (
     AccountData,
     BalanceData,
     AccountInfo,
+    BalanceInfo,
+    BalanceRequest,
     ContractData,
     BarData,
     OrderRequest,
@@ -183,6 +185,9 @@ class HuobiGateway(BaseGateway):
         """"""
         return self.rest_api.query_account()
 
+    def query_balance(self, req: BalanceRequest):
+        return self.rest_api.query_balance(req=req)
+
     def query_position(self) -> None:
         """"""
         pass
@@ -217,7 +222,7 @@ class HuobiRestApi(RestClient):
         self.key: str = ""
         self.secret: str = ""
         self.account_id: str = ""
-        self.accounts = {}
+        self.accounts = {}  # account_id: account_info
 
         self.order_count = 0
 
@@ -278,11 +283,19 @@ class HuobiRestApi(RestClient):
         self.gateway.write_log("REST API启动成功")
 
         self.query_contract()
-        self.query_account()
+
         self.query_order()
         self.query_market_status()
-        self.query_account()
-        self.query_balance()
+        #self.query_account()
+
+        tmp = self.query_account()
+        for t in tmp:
+            self.accounts[t.account_id] = t
+
+        #for accid in self.accounts:
+        #    req = BalanceRequest(account_id=accid, exchange=self.accounts[accid].exchange)
+        #    balance_info = self.query_balance(req=req)
+        #    print(balance_info)
 
     def query_market_status(self):
         self.add_request(
@@ -298,15 +311,55 @@ class HuobiRestApi(RestClient):
             callback=self.on_query_market_summary
         )
 
-    def query_account(self) -> List[AccountData]:
+    def query_account(self) -> List[AccountInfo]:
         """"""
-        self.add_request(method="GET", path="/v1/account/accounts", callback=self.on_query_account)
+        #self.add_request(method="GET", path="/v1/account/accounts", callback=self.on_query_account)
+        #params = {"symbol": req.symbol, "size": 2000}
+        # Get response from server
+        resp = self.request("GET", "/v1/account/accounts")
+        accounts = []
+        rawdata = resp.json()
+        if rawdata['status'] == 'ok':
+            data = rawdata['data']
+            for d in data:
+                accinfo = AccountInfo(exchange=Exchange.HUOBI,
+                                      gateway_name=self.gateway_name,
+                                      account_state=d['state'],
+                                      account_type=d['type'],
+                                      account_subtype=d['subtype'],
+                                      account_id=d['id'])
+                accounts.append(accinfo)
+        return accounts
 
-    def query_balance(self) -> None:
+    def query_balance(self, req: BalanceRequest) -> BalanceInfo:
         """"""
-        for accid in self.accounts:
-            accpath = f'/v1/account/accounts/{self.account_id}/balance'
-            self.add_request(method="GET", path=accpath, callback=self.on_query_balance)
+        account_id = req.account_id
+        resp = self.request("GET", f'/v1/account/accounts/{account_id}/balance')
+
+        rawdata = resp.json()
+        if rawdata['status'] == 'ok':
+            data = rawdata['data']
+            account_id = data['id']
+            account_type = data['type']
+            account_state = data['state']
+            balance_info = BalanceInfo(exchange=req.exchange,
+                                       gateway_name=self.gateway_name,
+                                       account_id=data['id'],
+                                       account_type=data['type'],
+                                       account_state=data['state'])
+            # {'currency': 'lun', 'type': 'trade', 'balance': '0'}
+            bdict = {}
+            for d in data['list']:
+                if d['currency'] not in bdict:
+                    bdict[d['currency']] = {}
+                bdict[d['currency']][d['type']] = float(d['balance'])
+
+            if account_type == 'spot':
+                for key in bdict:
+                    bdict[key]['available'] = bdict[key]['trade']-bdict[key]['frozen']
+
+            balance_info.data = bdict
+        return balance_info
 
     def query_order(self) -> None:
         """"""

@@ -564,6 +564,21 @@ class AccountInfo(BaseData):
     account_subtype: str
     account_state: str
 
+    def __str__(self):
+        return f'{self.exchange.value}-{self.account_id}-{self.account_type}-{self.account_subtype}-{self.account_state}'
+
+
+@dataclass
+class BalanceInfo(BaseData):
+    exchange: Exchange
+    account_id: str
+    account_type: str
+    account_state: str
+    data = {}
+
+    def __str__(self):
+        return ''
+
 
 @dataclass
 class BalanceData(BaseData):
@@ -626,6 +641,7 @@ class AccountData(BaseData):
     account_subtype: str
     account_state: str
 
+    currency: str = None
 
     accountid: str = None
     #state: str = None
@@ -730,6 +746,7 @@ class OrderRequest:
     price: float = 0
     offset: Offset = Offset.NONE
     reference: str = ""
+    account_id: str = ""
 
     def __post_init__(self):
         """"""
@@ -766,6 +783,15 @@ class CancelRequest:
     def __post_init__(self):
         """"""
         self.vt_symbol = f"{self.symbol}.{self.exchange.value}"
+
+
+@dataclass
+class BalanceRequest:
+    exchange: Exchange
+    account_id: str
+
+    def __str__(self):
+        return f'{self.exchange}-{self.account_id}'
 
 
 @dataclass
