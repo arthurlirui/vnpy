@@ -199,7 +199,8 @@ class GridVline(CtaTemplate):
             self.balance_info = balance_info
 
         for d in self.balance_info.data:
-            print(d, self.balance_info.data[d])
+            if self.balance_info.data[d].available > 0:
+                print(self.balance_info.data[d])
 
     def on_init_tick(self, tick: TickData):
        pass
@@ -257,13 +258,30 @@ class GridVline(CtaTemplate):
         self.kline_buf.append(bar)
 
     def on_account(self, accdata: AccountData):
-        print('gv', accdata)
-
+        print('InputData:', accdata)
+        if accdata.account_id != self.account_info.account_id:
+            return
         currency = accdata.currency
+        exchange = accdata.exchange
+        account_id = accdata.account_id
+        account_type = accdata.account_type
+        if accdata.available:
+            self.balance_info.update(exchange=exchange,
+                                     account_id=account_id,
+                                     account_type=account_type,
+                                     currency=currency, available=accdata.available)
+        if accdata.frozen:
+            self.balance_info.update(exchange=exchange,
+                                     account_id=account_id,
+                                     account_type=account_type,
+                                     currency=currency, frozen=accdata.frozen)
 
-
-        #print(accdata.accountid)
-        #print(accdata.account_type, accdata.account_subtype)
+        if accdata.balance:
+            self.balance_info.update(exchange=exchange,
+                                     account_id=account_id,
+                                     account_type=account_type,
+                                     currency=currency, volume=accdata.balance)
+        print('OnAccount:', self.balance_info.data[currency])
 
     def on_balance(self, balance_data: BalanceData):
         print(balance_data)

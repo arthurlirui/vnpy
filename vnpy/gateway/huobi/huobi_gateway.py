@@ -915,44 +915,61 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
 
         print(data)
         currency = data["currency"]
-        accoundid = data["accountId"]
+        accound_id = data["accountId"]
         change_type = data["changeType"]
-        accound_type = data["accountType"]
+        account_type = data["accountType"]
         change_time = data["changeTime"]
-
-        if not change_type:
-            balance = float(data["balance"])
-            if data["available"]:
-                frozen = balance - float(data["available"])
-            else:
-                frozen = 0.0
-            currency_balance[currency] = balance
-        elif "place" in change_type:
-            if "available" not in data:
-                return
-            balance = currency_balance[currency]
-            frozen = balance - float(data["available"])
-        else:
-            frozen = 0.0
-            if "balance" in data:
-                balance = float(data["balance"])
-            else:
-                balance = float(data["available"])
-            currency_balance[currency] = balance
-
-        account = AccountData(
+        # {'currency': 'usdt', 'accountId': 263903, 'balance': '1159.027494073183439048', 'changeType': 'order.match', 'accountType': 'trade', 'changeTime': 1613386265650}
+        ad = AccountData(
             exchange=Exchange.HUOBI,
-            account_id=accoundid,
-            accountid=currency,
+            account_id=accound_id,
             currency=currency,
-            account_type=accound_type,
-            account_subtype=None,
-            account_state=None,
-            balance=balance,
-            frozen=frozen,
+            account_type=account_type,
             gateway_name=self.gateway_name,
         )
-        self.gateway.on_account(account)
+        if change_type:
+            if 'balance' in data:
+                balance = float(data['balance'])
+                ad.balance = balance
+            if 'available' in data:
+                available = float(data['available'])
+                ad.available = available
+        print(ad)
+
+
+        # if not change_type:
+        #     balance = float(data["balance"])
+        #     if data["available"]:
+        #         frozen = balance - float(data["available"])
+        #     else:
+        #         frozen = 0.0
+        #     currency_balance[currency] = balance
+        # elif "place" in change_type:
+        #     if "available" not in data:
+        #         return
+        #     balance = currency_balance[currency]
+        #     frozen = balance - float(data["available"])
+        # else:
+        #     frozen = 0.0
+        #     if "balance" in data:
+        #         balance = float(data["balance"])
+        #     else:
+        #         balance = float(data["available"])
+        #     currency_balance[currency] = balance
+        #
+        # account = AccountData(
+        #     exchange=Exchange.HUOBI,
+        #     account_id=accound_id,
+        #     accountid=currency,
+        #     currency=currency,
+        #     account_type=account_type,
+        #     account_subtype=None,
+        #     account_state=None,
+        #     balance=balance,
+        #     frozen=frozen,
+        #     gateway_name=self.gateway_name,
+        # )
+        self.gateway.on_account(ad)
 
     def on_order(self, data: dict) -> None:
         """"""
