@@ -354,11 +354,19 @@ class HuobiRestApi(RestClient):
                     bdict[d['currency']] = {}
                 bdict[d['currency']][d['type']] = float(d['balance'])
 
-            if account_type == 'spot':
-                for key in bdict:
-                    bdict[key]['available'] = bdict[key]['trade']-bdict[key]['frozen']
+            # translate dict to BalanceData
+            for cur in bdict:
+                print(bdict[cur])
+                bd = BalanceData(exchange=req.exchange,
+                                 gateway_name=self.gateway_name,
+                                 account_id=data['id'],
+                                 account_type=data['type'],
+                                 account_state=data['state'],
+                                 currency=cur,
+                                 frozen=bdict[cur]['frozen'],
+                                 available=bdict[cur]['trade'])
 
-            balance_info.data = bdict
+                balance_info.data[cur] = bd
         return balance_info
 
     def query_order(self) -> None:
@@ -908,8 +916,6 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
         print(data)
         currency = data["currency"]
         accoundid = data["accountId"]
-        #balance = data['balance']
-        #available = data['available']
         change_type = data["changeType"]
         accound_type = data["accountType"]
         change_time = data["changeTime"]
@@ -938,6 +944,7 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
             exchange=Exchange.HUOBI,
             account_id=accoundid,
             accountid=currency,
+            currency=currency,
             account_type=accound_type,
             account_subtype=None,
             account_state=None,

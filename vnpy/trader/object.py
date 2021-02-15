@@ -574,7 +574,21 @@ class BalanceInfo(BaseData):
     account_id: str
     account_type: str
     account_state: str
+
+    # usdt {'trade': 224.86003307318344, 'frozen': 520.0, 'available': -295.13996692681656}
+    # usdt: BalanceData
     data = {}
+
+    def update_balance(self, exchange: Exchange,
+                       accound_id: str,
+                       account_type: str,
+                       currency: str, available: float, frozen: float):
+        if exchange == self.exchange and accound_id == self.account_id and account_type == self.account_type:
+            bd = BalanceData(exchange=exchange,
+                             account_id=accound_id,
+                             account_type=account_type,
+                             currency=currency, frozen=frozen, available=available)
+            self.data[currency] = bd
 
     def __str__(self):
         return ''
@@ -583,28 +597,23 @@ class BalanceInfo(BaseData):
 @dataclass
 class BalanceData(BaseData):
     exchange: Exchange
-
     account_id: str
     account_type: str
-    account_state: str
     currency: str
 
+    account_state: str = None
     volume: float = None
     available: float = None
     frozen: float = None
-    #price: float = None
 
     def __post_init__(self):
         """"""
         self.vt_symbol = f"{self.currency}.{self.exchange.value}"
         if self.available and self.frozen:
             self.volume = self.available + self.frozen
-        #self.available = self.volume
-        #self.frozen = self.volume - self.available
-        #self.vt_balanceid = f"{self.vt_symbol}.{self.direction.value}"
 
     def __str__(self):
-        return '%s %s V:%.3f A:%.3f F:%.3f' % (self.currency, self.exchange.value, self.volume, self.available, self.frozen)
+        return '%s %s A:%.3f F:%.3f' % (self.currency, self.exchange.value, self.available, self.frozen)
 
 
 @dataclass
@@ -640,15 +649,10 @@ class AccountData(BaseData):
     account_type: str
     account_subtype: str
     account_state: str
-
     currency: str = None
 
     accountid: str = None
-    #state: str = None
-    #account_type: str = None
-    #account_subtype: str = None
 
-    #balance = {}
     balance: float = 0
     frozen: float = 0
 
@@ -670,7 +674,7 @@ class AccountData(BaseData):
 
     def __str__(self):
         s1 = f'{self.exchange.value} {self.account_id} {self.account_type} {self.account_subtype} {self.account_state}'
-        s2 = f' {self.balance} {self.available} {self.frozen}'
+        s2 = f' {self.currency} {self.balance} {self.available} {self.frozen}'
         return s1+s2
 
 

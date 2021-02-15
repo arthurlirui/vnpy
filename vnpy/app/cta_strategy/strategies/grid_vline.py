@@ -258,10 +258,14 @@ class GridVline(CtaTemplate):
 
     def on_account(self, accdata: AccountData):
         print('gv', accdata)
+
+        currency = accdata.currency
+
+
         #print(accdata.accountid)
         #print(accdata.account_type, accdata.account_subtype)
 
-    def on_balance(self, balance_data, BalanceData):
+    def on_balance(self, balance_data: BalanceData):
         print(balance_data)
 
     def make_decision(self):
