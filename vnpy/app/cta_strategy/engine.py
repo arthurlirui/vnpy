@@ -171,7 +171,7 @@ class CtaEngine(BaseEngine):
 
     def process_account_event(self, event: Event):
         accdata = event.data
-        print('pcs', accdata)
+        #print('pcs', accdata)
         for vt_symbol in self.symbol_strategy_map:
             strategies = self.symbol_strategy_map[vt_symbol]
             for strategy in strategies:
@@ -213,7 +213,7 @@ class CtaEngine(BaseEngine):
     def process_order_event(self, event: Event):
         """"""
         order = event.data
-
+        print('POE:', order)
         self.offset_converter.update_order(order)
 
         strategy = self.orderid_strategy_map.get(order.vt_orderid, None)

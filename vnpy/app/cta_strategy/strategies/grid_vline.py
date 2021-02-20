@@ -257,8 +257,14 @@ class GridVline(CtaTemplate):
     def on_kline(self, bar: BarData):
         self.kline_buf.append(bar)
 
+    def on_trade(self, trade: TradeData):
+        print('OnTrade:', trade)
+
+    def on_order(self, order: OrderData):
+        print('OnOrder:', order)
+
     def on_account(self, accdata: AccountData):
-        print('InputData:', accdata)
+        #print('InputData:', accdata)
         if accdata.account_id != self.account_info.account_id:
             return
         currency = accdata.currency
@@ -281,7 +287,7 @@ class GridVline(CtaTemplate):
                                      account_id=account_id,
                                      account_type=account_type,
                                      currency=currency, volume=accdata.balance)
-        print('OnAccount:', self.balance_info.data[currency])
+        #print('OnAccount:', self.balance_info.data[currency])
 
     def on_balance(self, balance_data: BalanceData):
         print(balance_data)

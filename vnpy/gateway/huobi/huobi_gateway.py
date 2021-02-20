@@ -356,7 +356,7 @@ class HuobiRestApi(RestClient):
 
             # translate dict to BalanceData
             for cur in bdict:
-                print(bdict[cur])
+                #print(bdict[cur])
                 bd = BalanceData(exchange=req.exchange,
                                  gateway_name=self.gateway_name,
                                  account_id=data['id'],
@@ -871,11 +871,20 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
         }
         self.send_packet(req)
 
+    def subscribe_order_update(self, req: SubscribeRequest) -> None:
+        """"""
+        self.req_id += 1
+        req = {
+            "action": "sub",
+            "ch": f"orders#{req.symbol}"
+        }
+        self.send_packet(req)
+
     def subscribe_account_update(self) -> None:
         """"""
         req = {
             "action": "sub",
-            "ch": "accounts.update#1"
+            "ch": "accounts.update#3"
         }
         self.send_packet(req)
 
@@ -889,6 +898,8 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
         if "data" in packet and not packet["data"]:
             self.gateway.write_log("交易Websocket API登录成功")
             self.subscribe_account_update()
+            req = SubscribeRequest(symbol='bch3lusdt', exchange=Exchange.HUOBI)
+            self.subscribe_order_update(req=req)
         else:
             msg = packet["message"]
             error_msg = f"交易Websocket API登录失败，原因：{msg}"
@@ -896,11 +907,13 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
 
     def on_data(self, packet: dict) -> None:
         """"""
+        print(packet)
         if "sub" in packet["action"]:
             return
 
         ch = packet["ch"]
         if "orders" in ch:
+            #print(packet["data"])
             self.on_order(packet["data"])
         elif "accounts" in ch:
             self.on_account(packet["data"])
@@ -913,7 +926,7 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
         if not data:
             return
 
-        print(data)
+        #print(data)
         currency = data["currency"]
         accound_id = data["accountId"]
         change_type = data["changeType"]
@@ -934,7 +947,7 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
             if 'available' in data:
                 available = float(data['available'])
                 ad.available = available
-        print(ad)
+        #print(ad)
 
 
         # if not change_type:
@@ -971,13 +984,193 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
         # )
         self.gateway.on_account(ad)
 
+    def parse_trigger(self, data):
+        '''
+        {
+            "orderSide":"buy",
+            "lastActTime":1583853365586,
+            "clientOrderId":"abc123",
+            "orderStatus":"rejected",
+            "symbol":"btcusdt",
+            "eventType":"trigger",
+            "errCode": 2002,
+            "errMessage":"invalid.client.order.id (NT)"
+        }
+        '''
+        order_side = data['orderSize']
+        order_time = generate_datetime(data['lastActTime'], tzinfo=MY_TZ)
+        order_status = STATUS_HUOBI2VT[data['orderStatus']]
+
+    def parse_deletion(self, data):
+        '''
+        {
+            "orderSide":"buy",
+            "lastActTime":1583853365586,
+            "clientOrderId":"abc123",
+            "orderStatus":"canceled",
+            "symbol":"btcusdt",
+            "eventType":"deletion"
+        }
+        '''
+        symbol = data['symbol']
+        order_time = generate_datetime(data['lastActTime'], tzinfo=MY_TZ)
+        order_status = STATUS_HUOBI2VT[data['orderStatus']]
+        if data['orderSize'] == 'buy':
+            direction = Direction.LONG
+        elif data['orderSize'] == 'sell':
+            direction = Direction.SHORT
+
+        od = OrderData(gateway_name=self.gateway_name,
+                       symbol=symbol,
+                       exchange=Exchange.HUOBI,
+                       direction=direction,
+                       status=order_status,
+                       datetime=order_time)
+        return od
+
+    def parse_creation(self, data):
+        symbol = data['symbol']
+        account_id = data['accountId']
+        order_id = data['orderId']
+        client_order_id = data['clientOrderId']
+        order_source = data['orderSource']
+        order_price = float(data['orderPrice'])
+        order_type = data['type']
+        order_status = data['orderStatus']
+        order_time = generate_datetime(data['orderCreateTime'], tzinfo=MY_TZ)
+
+        if 'buy' in order_type:
+            direction = Direction.LONG
+        elif 'sell' in order_type:
+            direction = Direction.SHORT
+        else:
+            pass
+        vt_type = ORDERTYPE_HUOBI2VT[data['type']]
+        if 'limit' in order_type:
+            order_size = data['orderSize']
+            order_value = order_size*order_price
+        if 'market' in order_type:
+            order_value = data['orderValue']
+            order_size = order_value / order_price
+
+        od = OrderData(gateway_name=self.gateway_name,
+                       symbol=symbol,
+                       exchange=Exchange.HUOBI,
+                       orderid=order_id,
+                       type=vt_type,
+                       direction=direction,
+                       price=order_price,
+                       volume=order_size,
+                       traded=order_value,
+                       status=order_status,
+                       datetime=order_time)
+        return od
+
+    def parse_trade(self, data):
+        '''
+        {'tradePrice': '41.3037', 'tradeVolume': '0.0171',
+        'tradeTime': 1613490112635, 'aggressor': False,
+        'execAmt': '0.0171', 'tradeId': 3372275,
+        'orderPrice': '41.3037', 'orderSize': '0.2',
+        'remainAmt': '0.1829', 'orderSource': 'spot-android',
+        'clientOrderId': '', 'orderId': 206678784129560,
+        'orderStatus': 'partial-filled', 'eventType': 'trade',
+        'symbol': 'bch3lusdt', 'type': 'buy-limit'}
+        '''
+        symbol = data['symbol']
+        exchange = Exchange.HUOBI
+        order_id = data['orderId']
+        order_status = STATUS_HUOBI2VT[data['orderStatus']]
+        order_type = data['type']
+        order_time = generate_datetime(data['tradeTime'], tzinfo=MY_TZ)
+
+        if 'buy' in order_type:
+            direction = Direction.LONG
+        elif 'sell' in order_type:
+            direction = Direction.SHORT
+        else:
+            pass
+        vt_type = ORDERTYPE_HUOBI2VT[data['type']]
+
+        if vt_type == OrderType.LIMIT:
+            order_price = data['orderPrice']
+            order_volume = float(data['remainAmt'])
+            trade_price = data['tradePrice']
+            trade_volume = data['tradeVolume']
+            remain_amount = float(data['remainAmt'])
+            traded_value = trade_price*trade_volume
+        elif vt_type == OrderType.MARKET:
+            trade_price = data['tradePrice']
+            trade_volume = data['tradeVolume']
+            traded_value = trade_price * trade_volume
+            remain_amount = float(data['remainAmt'])
+            exec_amount = float(data['execAmt'])
+        order_time = generate_datetime(data['tradeTime'], tzinfo=MY_TZ)
+        od = OrderData(gateway_name=self.gateway_name,
+                       symbol=symbol, exchange=Exchange.HUOBI,
+                       orderid=order_id, type=vt_type,
+                       direction=direction, price=trade_price,
+                       volume=trade_volume, traded=traded_value,
+                       status=order_status, datetime=order_time)
+        return od
+
+    def gen_huobi_order(self, data: dict):
+        '''
+        limit order:
+        {'accountId': 263903, 'orderPrice': '42.8042', 'orderSize': '0.2',
+        'orderCreateTime': 1613476719841, 'orderSource': 'spot-android',
+        'clientOrderId': '', 'orderId': 204565155967518,
+        'orderStatus': 'submitted',
+        'eventType': 'creation', 'symbol': 'bch3lusdt', 'type': 'buy-limit'}
+        buy market:
+        {'tradePrice': '42.8981', 'tradeVolume': '0.116555278672015776',
+        'tradeTime': 1613489430415, 'aggressor': True,
+        'execAmt': '4.99999999999999996',
+        'tradeId': 3372044, 'orderValue': '5',
+        'remainAmt': '0.00000000000000004',
+        'orderSource': 'spot-android',
+        'clientOrderId': '', 'orderId': 206678683466465,
+        'orderStatus': 'filled', 'eventType': 'trade',
+        'symbol': 'bch3lusdt', 'type': 'buy-market'}
+
+        order partially filled
+        {'tradePrice': '41.3037', 'tradeVolume': '0.0171',
+        'tradeTime': 1613490112635, 'aggressor': False,
+        'execAmt': '0.0171', 'tradeId': 3372275,
+        'orderPrice': '41.3037', 'orderSize': '0.2',
+        'remainAmt': '0.1829', 'orderSource': 'spot-android',
+        'clientOrderId': '', 'orderId': 206678784129560,
+        'orderStatus': 'partial-filled', 'eventType': 'trade',
+        'symbol': 'bch3lusdt', 'type': 'buy-limit'}
+
+        '''
+        event_type = data['eventType']
+        if event_type == 'trigger':
+            pass
+        elif event_type == 'deletion':
+            od = self.parse_deletion(data)
+        elif event_type == 'creation':
+            od = self.parse_creation(data)
+        elif event_type == 'trade':
+            od = self.parse_trade(data)
+        elif event_type == 'cancellation':
+            od = self.parse_deletion(data)
+        return od
+
     def on_order(self, data: dict) -> None:
         """"""
+
+        print('huobi data:', data)
         orderid = data["clientOrderId"]
         order = self.gateway.get_order(orderid)
+        for ord in self.gateway.orders:
+            print(ord)
+
+
+
         if not order:
             return
-
+        print('huobi order:', order)
         traded_volume = float(data.get("tradeVolume", 0))
 
         # Push order event
@@ -1000,6 +1193,7 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
             datetime=datetime.now(MY_TZ),
             gateway_name=self.gateway_name,
         )
+        print('Huobi:', trade)
         self.gateway.on_trade(trade)
 
 
