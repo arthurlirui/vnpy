@@ -1036,12 +1036,11 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
             order_size = order_value / order_price
         else:
             pass
-
         od = OrderData(gateway_name=self.gateway_name,
                        symbol=symbol,
                        exchange=Exchange.HUOBI,
                        orderid=order_id,
-                       type=vt_type,
+                       type=vt_type[1],
                        price=order_price,
                        volume=order_size,
                        direction=direction,
@@ -1057,7 +1056,7 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
         order_source = data['orderSource']
 
         order_type = data['type']
-        order_status = data['orderStatus']
+        order_status = STATUS_HUOBI2VT[data['orderStatus']]
         time_in_s = data['orderCreateTime']/1000.0
         order_time = generate_datetime(time_in_s, tzinfo=MY_TZ)
 
@@ -1069,10 +1068,12 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
             pass
         vt_type = ORDERTYPE_HUOBI2VT[data['type']]
         if 'limit' in order_type:
+            order_type_vt = OrderType.LIMIT
             order_price = float(data['orderPrice'])
             order_size = float(data['orderSize'])
             order_value = order_size * order_price
         if 'market' in order_type:
+            order_type_vt = OrderType.MARKET
             order_value = float(data['orderValue'])
             order_size = 0
             order_price = 0
@@ -1082,7 +1083,7 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
                        symbol=symbol,
                        exchange=Exchange.HUOBI,
                        orderid=order_id,
-                       type=vt_type,
+                       type=vt_type[1],
                        direction=direction,
                        price=order_price,
                        volume=order_size,
@@ -1119,6 +1120,7 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
         vt_type = ORDERTYPE_HUOBI2VT[data['type']]
 
         if 'limit' in order_type:
+            order_type_vt = OrderType.LIMIT
             order_price = float(data['orderPrice'])
             order_size = float(data['orderSize'])
             #order_volume = float(data['remainAmt'])
@@ -1128,6 +1130,7 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
             exec_amount = float(data['execAmt'])
             traded_value = order_price * exec_amount
         elif 'market' in order_type:
+            order_type_vt = OrderType.MARKET
             trade_price = float(data['tradePrice'])
             trade_volume = float(data['tradeVolume'])
             remain_amount = float(data['remainAmt'])
@@ -1137,7 +1140,7 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
             pass
         od = OrderData(gateway_name=self.gateway_name,
                        symbol=symbol, exchange=Exchange.HUOBI,
-                       orderid=order_id, type=vt_type,
+                       orderid=order_id, type=vt_type[1],
                        direction=direction, price=trade_price,
                        volume=trade_volume, traded=traded_value,
                        remain_amount=remain_amount,
@@ -1197,13 +1200,16 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
         print(od)
 
         #orderid = data["clientOrderId"]
-        #order = self.gateway.get_order(orderid)
+
         #for ord in self.gateway.orders:
         #    print(ord)
 
         #if not order:
         #    return
-        print('huobi order:', od)
+        #print('huobi order:', od)
+        self.gateway.on_order(od)
+        order = self.gateway.get_order(od.orderid)
+        print(order)
 
         # traded_volume = float(data.get("tradeVolume", 0))
         #

@@ -217,6 +217,7 @@ class CtaEngine(BaseEngine):
         self.offset_converter.update_order(order)
 
         strategy = self.orderid_strategy_map.get(order.vt_orderid, None)
+        print(strategy)
         if not strategy:
             return
 
