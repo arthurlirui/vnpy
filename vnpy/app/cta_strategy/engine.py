@@ -213,36 +213,40 @@ class CtaEngine(BaseEngine):
     def process_order_event(self, event: Event):
         """"""
         order = event.data
-        print('POE:', order)
+        print('process_order_event:', order)
         self.offset_converter.update_order(order)
 
-        strategy = self.orderid_strategy_map.get(order.vt_orderid, None)
-        print(strategy)
-        if not strategy:
+        #strategy = self.orderid_strategy_map.get(order.vt_orderid, None)
+        #print(self.symbol_strategy_map)
+        strategies = self.symbol_strategy_map.get(order.vt_symbol, None)
+        print(strategies)
+        if len(strategies) == 0:
             return
 
         # Remove vt_orderid if order is no longer active.
-        vt_orderids = self.strategy_orderid_map[strategy.strategy_name]
-        if order.vt_orderid in vt_orderids and not order.is_active():
-            vt_orderids.remove(order.vt_orderid)
+        for strategy in strategies:
+            vt_orderids = self.strategy_orderid_map[strategy.strategy_name]
+            print(vt_orderids)
+            if order.vt_orderid in vt_orderids and not order.is_active():
+                vt_orderids.remove(order.vt_orderid)
 
-        # For server stop order, call strategy on_stop_order function
-        if order.type == OrderType.STOP:
-            so = StopOrder(
-                vt_symbol=order.vt_symbol,
-                direction=order.direction,
-                offset=order.offset,
-                price=order.price,
-                volume=order.volume,
-                stop_orderid=order.vt_orderid,
-                strategy_name=strategy.strategy_name,
-                status=STOP_STATUS_MAP[order.status],
-                vt_orderids=[order.vt_orderid],
-            )
-            self.call_strategy_func(strategy, strategy.on_stop_order, so)
+            # For server stop order, call strategy on_stop_order function
+            if order.type == OrderType.STOP:
+                so = StopOrder(
+                    vt_symbol=order.vt_symbol,
+                    direction=order.direction,
+                    offset=order.offset,
+                    price=order.price,
+                    volume=order.volume,
+                    stop_orderid=order.vt_orderid,
+                    strategy_name=strategy.strategy_name,
+                    status=STOP_STATUS_MAP[order.status],
+                    vt_orderids=[order.vt_orderid],
+                )
+                self.call_strategy_func(strategy, strategy.on_stop_order, so)
 
-        # Call strategy on_order function
-        self.call_strategy_func(strategy, strategy.on_order, order)
+            # Call strategy on_order function
+            self.call_strategy_func(strategy, strategy.on_order, order)
 
     def process_trade_event(self, event: Event):
         """"""

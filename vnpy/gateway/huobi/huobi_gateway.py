@@ -76,14 +76,10 @@ INTERVAL_VT2HUOBI = {
     Interval.MINUTE_5: "5min",
     Interval.MINUTE_15: "15min",
     Interval.MINUTE_30: "30min",
-
     Interval.HOUR: "60min",
     Interval.HOUR_4: "4hour",
-
     Interval.DAILY: "1day",
-
     Interval.WEEKLY: "1week",
-
     Interval.MONTHLY: "1mon",
     Interval.YEARLY: "1year",
 }
@@ -147,6 +143,7 @@ class HuobiGateway(BaseGateway):
 
     def on_order(self, order: OrderData) -> None:
         """"""
+        print(self.orders)
         self.orders[order.orderid] = order
         super().on_order(order)
 

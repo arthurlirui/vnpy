@@ -50,6 +50,7 @@ class GridVline(CtaTemplate):
     usdt_vol_list = [10, 40, 160, 640, 2560, 10240, 40960]
     market_params = {'btcusdt': {'vline_vol': 10, 'vline_vol_list': usdt_vol_list, 'bin_size': 1.0},
                      'bch3lusdt': {'vline_vol': 10, 'vline_vol_list': usdt_vol_list, 'bin_size': 1.0}}
+    #market_params = {'bch3lusdt': {'vline_vol': 10, 'vline_vol_list': usdt_vol_list, 'bin_size': 1.0}}
 
     parameters = ['vline_vol', 'vline_num', 'vline_vol_list']
     vline_vol = 10
@@ -86,7 +87,7 @@ class GridVline(CtaTemplate):
         """"""
         super(GridVline, self).__init__(cta_engine, strategy_name, vt_symbol, setting)
 
-        self.symbols = ['btc']
+        self.symbols = ['btcusdt', 'bch3lusdt']
         self.exchanges = ['HUOBI']
 
         # data buffer
