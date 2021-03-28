@@ -225,6 +225,8 @@ class CtaEngine(BaseEngine):
 
         # Remove vt_orderid if order is no longer active.
         for strategy in strategies:
+            if not strategy.inited:
+                continue
             vt_orderids = self.strategy_orderid_map[strategy.strategy_name]
             print(vt_orderids)
             if order.vt_orderid in vt_orderids and not order.is_active():
