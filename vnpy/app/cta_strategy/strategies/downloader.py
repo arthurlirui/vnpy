@@ -95,6 +95,10 @@ class Downloader(CtaTemplate):
         self.trades[self.vt_symbol] = []
         self.klines[self.vt_symbol] = []
 
+        self.last_tick = None
+        self.timer_count = 0
+        self.pos = 0
+
     def on_start(self):
         """
         Callback when strategy is started.
@@ -126,7 +130,7 @@ class Downloader(CtaTemplate):
         pass
 
     def on_tick(self, tick: TickData):
-        pass
+        self.last_tick = tick
 
     def on_market_trade(self, trade: TradeData):
         if trade.vt_symbol in self.trades:
@@ -159,10 +163,10 @@ class Downloader(CtaTemplate):
             return
 
         self.timer_count += 1
-        if self.timer_count < self.interval:
-            self.put_variables_event()
-            return
-        self.timer_count = 0
+        # if self.timer_count < self.interval:
+        #     self.put_variables_event()
+        #     return
+        #self.timer_count = 0
         self.pos += 1
 
     def on_kline(self, bar: BarData):

@@ -49,7 +49,7 @@ class GridVline(CtaTemplate):
 
     usdt_vol_list = [10, 40, 160, 640, 2560, 10240, 40960]
     market_params = {'btcusdt': {'vline_vol': 10, 'vline_vol_list': usdt_vol_list, 'bin_size': 1.0},
-                     'bch3lusdt': {'vline_vol': 10, 'vline_vol_list': usdt_vol_list, 'bin_size': 1.0}}
+                     'bch3lusdt': {'vline_vol': 10, 'vline_vol_list': usdt_vol_list, 'bin_size': 0.01}}
     #market_params = {'bch3lusdt': {'vline_vol': 10, 'vline_vol_list': usdt_vol_list, 'bin_size': 1.0}}
 
     parameters = ['vline_vol', 'vline_num', 'vline_vol_list']
@@ -303,6 +303,11 @@ class GridVline(CtaTemplate):
                 self.vqg[t.vt_symbol].update_market_trades(trade=t)
             self.trade_buf = []
 
+            print(self.vqg[self.vt_symbol])
+            print(self.vqg[self.vt_symbol].vq)
+            for vqi in self.vqg[self.vt_symbol].vq:
+                print(self.vqg[self.vt_symbol].vq[vqi])
+
             for bar in self.kline_buf:
                 self.kqg.update_bar(bar=bar)
             self.kline_buf = []
@@ -313,9 +318,11 @@ class GridVline(CtaTemplate):
 
         #self.send_order()
 
-        for vts in self.kqg.barq:
-            for intv in self.kqg.barq[vts]:
-                #print(self.kqg.barq[vts][intv].bars[-1])
-                pass
+        # for vts in self.kqg.barq:
+        #     for intv in self.kqg.barq[vts]:
+        #         #print(self.kqg.barq[vts][intv].bars[-1])
+        #         pass
+
+        print(self.timer_count)
         self.timer_count += 1
 
