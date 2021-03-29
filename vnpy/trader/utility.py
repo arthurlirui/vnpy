@@ -389,13 +389,8 @@ class MarketEventGenerator:
             self.hover.event = MarketEvent.HOVER
         return is_event
 
-
+'''
 class VlineGenerator:
-    '''
-    For
-    1. Generate 1 volume vline from tick data
-    2. Merge vol_list volume size for vline
-    '''
     def __init__(
         self,
         on_vline: Callable,
@@ -556,10 +551,6 @@ class VlineGenerator:
         self.last_tick = tick
 
     def multi_vline_setting(self, on_multi_vline: Callable, vol_list=[10, 20, 40]):
-        '''
-        setting multiple vlines
-        :return:
-        '''
         self.vol_list = vol_list
         self.on_multi_vline = on_multi_vline
 
@@ -601,12 +592,165 @@ class VlineGenerator:
         #         else:
         #             self.dist_buf[v] = self.dist_buf[v] + d
 
+'''
 
-class VlineQueueGenerator:
+
+class VlineGenerator:
     '''
     For
-    1. Generate several vline from trade data
+    1. Generate 1 volume vline from tick data
+    2. Merge vol_list volume size for vline
     '''
+    def __init__(
+        self,
+        on_vline: Callable,
+        vol_list: list = [],
+    ):
+        self.on_vline: Callable = on_vline
+
+        self.vol_list = vol_list
+        self.vline_buf = {}
+        self.dist_buf = {}
+        self.vlines = {}
+        self.dists = {}
+        for vol in self.vol_list:
+            self.vline_buf[vol] = VlineData()
+            self.dist_buf[vol] = DistData()
+            self.vlines[vol] = []
+            self.dists[vol] = []
+
+        self.last_trade: TradeData = None
+
+        # buffer for saving ticks in vline
+        self.ticks = []
+        self.trades = []
+
+    def get_vline(self, vol: int):
+        return self.vline_buf[vol]
+
+    def get_dist(self, vol: int):
+        return self.dist_buf[vol]
+
+    def check_valid(self, trade: TradeData) -> bool:
+        is_valid = True
+        # filter trade data with 0 volume
+        if trade.volume <= 0:
+            is_valid = False
+        # filter trade data with older timestamp
+        if self.last_trade and trade.datetime < self.last_trade.datetime:
+            is_valid = False
+        # filter trade data with different vt_symbol
+        if self.last_trade and trade.vt_symbol != self.last_trade.vt_symbol:
+            is_valid = False
+        return is_valid
+
+    def update_market_trades(self, trade: TradeData) -> None:
+        new_vline = False
+        if not self.check_valid(trade=trade):
+            return
+
+        # for each different volume vline
+        for vol in self.vol_list:
+            if self.vline_buf[vol].is_empty():
+                new_vline = True
+            elif self.vline_buf[vol].volume >= vol:
+                self.on_vline(self.vline_buf[vol], vol)
+                self.update_vline(vline=self.vline_buf[vol], vol=vol)
+                self.update_dist(dist=self.dist_buf[vol], vol=vol)
+                new_vline = True
+            else:
+                new_vline = False
+
+            if new_vline:
+                # init empty vline here
+                self.vline_buf[vol] = VlineData()
+                self.vline_buf[vol].init_by_trade(trade)
+                self.dist_buf[vol] = DistData()
+                self.dist_buf[vol].calc_dist_trades(self.vline_buf[vol].trades)
+            else:
+                self.vline_buf[vol].add_trade(trade)
+                self.dist_buf[vol].add_trade(trade)
+        self.last_trade = trade
+
+    def update_tick(self, tick: TickData) -> None:
+        """
+        Update new tick data into generator.
+        1. udpate vline
+        2. update dist for each vline
+        3. update long term tick
+        """
+        new_vline = False
+
+        # Filter tick data with 0 last price
+        if not tick.last_price:
+            return
+
+        # Filter tick data with older timestamp
+        if self.last_tick and tick.datetime < self.last_tick.datetime:
+            return
+
+        if self.vline.is_empty():
+            new_vline = True
+        elif self.vline.volume > self.vol:
+            self.on_vline(self.vline)
+            # update vline for multiple vlines
+            self.update_vline(vline=self.vline)
+
+            # update dist
+            self.update_dist(dist=self.dist)
+            new_vline = True
+
+        if new_vline:
+            # init empty vline here
+            self.vline = VlineData()
+            self.vline.init_by_tick(tick)
+
+            self.dist = DistData()
+            self.dist.calc_dist(self.vline.ticks)
+        else:
+            self.vline.add_tick(tick)
+            self.dist.add_tick(tick)
+
+        self.last_tick = tick
+
+    def multi_vline_setting(self, on_multi_vline: Callable, vol_list=[10, 20, 40]):
+        '''
+        setting multiple vlines
+        :return:
+        '''
+        self.vol_list = vol_list
+        self.on_multi_vline = on_multi_vline
+
+        # multi vline buffer
+        self.vline_buf = {}
+        self.dist_buf = {}
+        for v in self.vol_list:
+            self.vline_buf[v] = VlineData()
+            self.dist_buf[v] = DistData()
+
+    def update_vline(self, vline: VlineData, vol: int) -> None:
+        """
+        Update new vline data into generator.
+        """
+        # 1. process None last tick and None last vline
+        # 2. update last vline for each trade
+        # 3. check volume to update other all vline in list
+        if vol in self.vlines:
+            self.vlines[vol].append(vline)
+
+    def update_dist(self, dist: DistData, vol: int):
+        if vol in self.dists:
+            self.dists[vol].append(dist)
+
+    def init_by_kline(self, bar: BarData):
+        trade = bar2trade(bar=bar)
+        self.update_market_trades(trade=trade)
+
+    def init_by_trade(self, trade: TradeData):
+        self.update_market_trades(trade=trade)
+
+
+class VlineQueueGenerator:
     def __init__(self, vol_list: list, vt_symbol: str, bin_size: float = 1.0, init_thresh_vol: float = 50):
         """Constructor"""
         self.vol_list = vol_list
@@ -672,10 +816,8 @@ class VlineQueue:
     def update_trade(self, trade: TradeData):
         self.last_trade = trade
         self.push(trade=trade)
-        #sz = self.size()
         while self.size() > self.max_vol:
             self.pop()
-            #sz = self.size()
 
     def init_kline(self, bar: BarData):
         trade = bar2trade(bar)
@@ -740,12 +882,19 @@ class VlineQueue:
         return self.vol
 
     def less_vol(self, price):
-        ltvol = sum([self.dist[k] for k in self.dist if k < price])
+        ltvol = sum([self.dist[k] for k in self.dist if k*self.bin_size < price])
         pc = ltvol / self.vol
         return pc
 
     def __str__(self):
-        return f'{len(self.trades)} {self.trades[0]} {self.trades[-1]}'
+        outstr = ''
+        for d in self.dist:
+            if not self.dist[d] > 0.01:
+                continue
+            outstr += '%.3f:%.3f ' % (d*self.bin_size, self.dist[d])
+        if len(self.trades) > 0:
+            outstr += f'\n{len(self.trades)} {self.trades[0]} {self.trades[-1]}\n'
+        return outstr
 
 
 class DistGenerator:
