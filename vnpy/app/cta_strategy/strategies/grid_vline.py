@@ -9,6 +9,8 @@ from vnpy.trader.object import HistoryRequest
 from typing import Any, Callable
 from pprint import pprint
 import math
+from scipy.signal import argrelextrema, argrelmin, argrelmax
+import numpy as np
 
 from vnpy.trader.constant import (
     Direction,
@@ -48,14 +50,15 @@ class GridVline(CtaTemplate):
     variables = []
 
     usdt_vol_list = [10, 40, 160, 640, 2560, 10240, 40960]
+    bch3l_vol_list = [1000, 4000, 16000, 64000, 256000, 1024000, 4096000]
     market_params = {'btcusdt': {'vline_vol': 10, 'vline_vol_list': usdt_vol_list, 'bin_size': 1.0},
                      'bch3lusdt': {'vline_vol': 10, 'vline_vol_list': usdt_vol_list, 'bin_size': 0.01}}
-    #market_params = {'bch3lusdt': {'vline_vol': 10, 'vline_vol_list': usdt_vol_list, 'bin_size': 1.0}}
+    market_params = {'bch3lusdt': {'vline_vol': 100, 'vline_vol_list': bch3l_vol_list, 'bin_size': 0.01}}
 
     parameters = ['vline_vol', 'vline_num', 'vline_vol_list']
-    vline_vol = 10
-    vline_num = 5
-    vline_vol_list = [10, 40, 160, 640, 2560, 10240, 40960]
+    vline_vol = 0
+    vline_num = 0
+    vline_vol_list = []
     # variables = ['kk_up', 'kk_down']
 
     # parameters = {'vline_vol': 10,
@@ -87,7 +90,7 @@ class GridVline(CtaTemplate):
         """"""
         super(GridVline, self).__init__(cta_engine, strategy_name, vt_symbol, setting)
 
-        self.symbols = ['btcusdt', 'bch3lusdt']
+        self.symbols = ['bch3lusdt']
         self.exchanges = ['HUOBI']
 
         # data buffer
@@ -106,8 +109,14 @@ class GridVline(CtaTemplate):
         Callback when strategy is inited.
         """
         self.write_log("策略初始化")
+
+        # init vline queue generator
         self.vqg = {}
         self.init_vline_queue_generator()
+
+        # init vline generator
+        self.vg = {}
+        self.init_vline_generator()
 
         self.kqg = BarQueueGenerator()
 
@@ -116,6 +125,12 @@ class GridVline(CtaTemplate):
 
         self.last_tick = None
         self.timer_count = 0
+
+        # init internal parameters
+        self.max_amount = 1000
+        self.max_ratio = 1.0
+        self.support_min = []
+        self.support_max = []
 
     def on_start(self):
         """
@@ -132,7 +147,8 @@ class GridVline(CtaTemplate):
     def init_data(self):
         # init local market data for vline
         self.load_market_trade(callback=self.on_init_market_trade)
-        self.load_bar(2, interval=Interval.MINUTE, callback=self.on_init_vline_queue)
+        self.load_bar(days=2, interval=Interval.MINUTE, callback=self.on_init_vline_queue)
+        #self.load_bar(days=2, interval=Interval.MINUTE, callback=self.on_init_vline)
 
         # init local market data for bar
         self.load_bar(days=2, interval=Interval.MINUTE, callback=self.on_kline)
@@ -145,7 +161,6 @@ class GridVline(CtaTemplate):
 
         # load account and balance
         self.load_account()
-
         self.is_data_inited = True
 
     def init_account(self):
@@ -210,12 +225,20 @@ class GridVline(CtaTemplate):
         for vt_symbol in self.vqg:
             if trade.vt_symbol == vt_symbol:
                 self.vqg[vt_symbol].init_by_trade(trade=trade)
+        for vt_symbol in self.vg:
+            if trade.vt_symbol == vt_symbol:
+                self.vg[vt_symbol].init_by_trade(trade=trade)
 
     def on_init_vline_queue(self, bar: BarData):
         # init load_bar data is from reversed order
         for vt_symbol in self.vqg:
             if bar.vt_symbol == vt_symbol:
                 self.vqg[vt_symbol].init_by_kline(bar=bar)
+
+    def on_init_vline(self, bar: BarData):
+        for vt_symbol in self.vg:
+            if bar.vt_symbol == vt_symbol:
+                self.vg[vt_symbol].init_by_kline(bar=bar)
 
     def init_setting(self, setting: dict = {}):
         for key in setting:
@@ -236,9 +259,7 @@ class GridVline(CtaTemplate):
                 vt_sym = s + '.' + ex
                 vline_vol_list = self.market_params[s]['vline_vol_list']
                 bin_size = self.market_params[s]['bin_size']
-                self.vqg[vt_sym] = VlineQueueGenerator(vol_list=vline_vol_list,
-                                                       vt_symbol=self.vt_symbol,
-                                                       bin_size=bin_size)
+                self.vqg[vt_sym] = VlineQueueGenerator(vol_list=vline_vol_list, vt_symbol=self.vt_symbol, bin_size=bin_size)
 
     def init_vline_generator(self):
         for s in self.symbols:
@@ -246,7 +267,7 @@ class GridVline(CtaTemplate):
                 vt_sym = s+'.'+ex
                 vline_vol = self.market_params[s]['vline_vol']
                 vline_vol_list = self.market_params[s]['vline_vol_list']
-                self.vg[vt_sym] = VlineGenerator(on_vline=self.on_vline, vol_list=vline_vol_list)
+                self.vg[vt_sym] = VlineGenerator(on_vline=self.on_vline, vol_list=[vline_vol])
 
     def on_tick(self, tick: TickData):
         self.tick_buf.append(tick)
@@ -254,6 +275,14 @@ class GridVline(CtaTemplate):
 
     def on_market_trade(self, trade: TradeData):
         self.trade_buf.append(trade)
+        print(trade)
+        for vol in self.vqg[self.vt_symbol].vq:
+            pos = self.vqg[self.vt_symbol].vq[vol].less_vol(trade.price)
+            total_vol = self.vqg[self.vt_symbol].vq[vol].vol
+            print('%.4f %.4f' % (pos*100, total_vol))
+
+    def on_vline(self, vline: VlineData, vol: int):
+        print(vline)
 
     def on_kline(self, bar: BarData):
         self.kline_buf.append(bar)
@@ -301,28 +330,65 @@ class GridVline(CtaTemplate):
         if self.is_data_inited:
             for t in self.trade_buf:
                 self.vqg[t.vt_symbol].update_market_trades(trade=t)
-            self.trade_buf = []
 
-            print(self.vqg[self.vt_symbol])
-            print(self.vqg[self.vt_symbol].vq)
-            for vqi in self.vqg[self.vt_symbol].vq:
-                print(self.vqg[self.vt_symbol].vq[vqi])
+            for t in self.trade_buf:
+                self.vg[t.vt_symbol].update_market_trades(trade=t)
 
             for bar in self.kline_buf:
                 self.kqg.update_bar(bar=bar)
-            self.kline_buf = []
 
+            self.trade_buf = []
+            self.kline_buf = []
             self.tick_buf = []
 
-        #print(self.last_tick)
+            debug_print = False
+            if debug_print:
+                for vqi in self.vqg[self.vt_symbol].vq:
+                    print(self.vqg[self.vt_symbol].vq[vqi])
 
-        #self.send_order()
+                for vi in self.vg[self.vt_symbol].vlines:
+                    vl = self.vg[self.vt_symbol].vlines[vi]
+                    if len(vl) > 0:
+                        print(len(vl), vl[0], vl[-1])
 
-        # for vts in self.kqg.barq:
-        #     for intv in self.kqg.barq[vts]:
-        #         #print(self.kqg.barq[vts][intv].bars[-1])
-        #         pass
+        if self.timer_count % 10 == 0:
+            '''update reference buy and sell point'''
+            for vol in self.vg[self.vt_symbol].vlines:
+                vlines = self.vg[self.vt_symbol].vlines[vol]
+                if len(vlines) == 0:
+                    continue
+                buy_price = np.array([v.low_price for v in vlines])
+                sell_price = np.array([v.high_price for v in vlines])
+                avg_price = np.array([v.avg_price for v in vlines])
+                local_min_ind = argrelmin(avg_price)[0]
+                local_max_ind = argrelmax(avg_price)[0]
+                for i in local_min_ind:
+                    print(f'min_{i}', vlines[i])
+                for i in local_max_ind:
+                    print(f'max_{i}', vlines[i])
+                for i in range(len(vlines)):
+                    print('%04d' % i, vlines[i])
 
-        print(self.timer_count)
+        if self.timer_count % 30 == 0:
+            '''
+            update min max vline
+            '''
+            for vol in self.vg[self.vt_symbol].vlines:
+                vlines = self.vg[self.vt_symbol].vlines[vol]
+                if len(vlines) == 0:
+                    continue
+                low_price = np.array([v.low_price for v in vlines])
+                high_price = np.array([v.high_price for v in vlines])
+                avg_price = np.array([v.avg_price for v in vlines])
+                local_min_ind = argrelmin(avg_price)[0]
+                local_max_ind = argrelmax(avg_price)[0]
+                for i in local_min_ind:
+                    print(f'min_{i}', vlines[i])
+                for i in local_max_ind:
+                    print(f'max_{i}', vlines[i])
+                for i in range(len(vlines)):
+                    print('%04d' % i, vlines[i])
+
+            print(self.timer_count)
         self.timer_count += 1
 
