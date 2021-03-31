@@ -287,7 +287,10 @@ class HuobiRestApi(RestClient):
 
         tmp = self.query_account()
         for t in tmp:
+            print(t)
             self.accounts[t.account_id] = t
+            if t.account_type == 'spot':
+                self.account_id = t.account_id
 
         #for accid in self.accounts:
         #    req = BalanceRequest(account_id=accid, exchange=self.accounts[accid].exchange)
@@ -997,6 +1000,7 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
         order_side = data['orderSize']
         order_time = generate_datetime(data['lastActTime'], tzinfo=MY_TZ)
         order_status = STATUS_HUOBI2VT[data['orderStatus']]
+        print(data)
 
     def parse_deletion(self, data):
         '''
@@ -1176,6 +1180,7 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
         'symbol': 'bch3lusdt', 'type': 'buy-limit'}
 
         '''
+        #print(data)
         event_type = data['eventType']
         if event_type == 'trigger':
             pass
