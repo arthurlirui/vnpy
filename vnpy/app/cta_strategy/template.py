@@ -152,6 +152,8 @@ class CtaTemplate(ABC):
         """
         Send buy order to open a long position.
         """
+        msg = f"委托买入{self.vt_symbol}：{volume}@{price}"
+        self.write_log(msg)
         return self.send_order(Direction.LONG, Offset.OPEN, price, volume, stop, lock)
 
     def sell(self, price: float, volume: float, stop: bool = False, lock: bool = False):
