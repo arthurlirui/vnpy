@@ -111,6 +111,10 @@ class GridVline(CtaTemplate):
         """
         self.write_log("策略初始化")
 
+        # init buffer for saving trades and klines
+        self.his_trade_buf = {}
+        self.his_kline_buf = {}
+
         # init vline queue generator
         self.vqg = {}
         self.init_vline_queue_generator()
@@ -122,6 +126,7 @@ class GridVline(CtaTemplate):
         self.kqg = BarQueueGenerator()
 
         self.is_data_inited = False
+        self.trading = False
         self.init_data()
 
         self.last_tick = None
@@ -135,13 +140,16 @@ class GridVline(CtaTemplate):
         self.max_num_vline = 100000
         self.max_local_num_extrema = 100
         self.vline_loca_order = 200
-        self.buy_ref_price = np.array([])
-        self.sell_ref_price = np.array([])
+        self.buy_ref_price = None
+        self.sell_ref_price = None
         self.theta = 0.01
         self.global_prob = 0.3
         self.buy_prob = 0
         self.sell_prob = 0
         #self.sell(price=11, volume=0.5)
+        self.trade_amount = 20
+
+        # init invest position
 
     def on_start(self):
         """
@@ -155,24 +163,70 @@ class GridVline(CtaTemplate):
         """
         self.write_log("策略停止")
 
+    def init_buf(self):
+        for s in self.symbols:
+            for ex in self.exchanges:
+                vt_sym = s + '.' + ex
+                self.his_trade_buf[vt_sym] = []
+                self.his_kline_buf[vt_sym] = []
+
     def init_data(self):
         # init local market data for vline
-        self.load_market_trade(callback=self.on_init_market_trade)
-        self.load_bar(days=2, interval=Interval.MINUTE, callback=self.on_init_vline_queue)
+        # first init vline queue generator, vline generator by kline
+        # then update vline queue generator, vline generator by history trade
+        self.init_buf()
+        self.load_bar(days=2, interval=Interval.MINUTE, callback=self.on_save_his_kline)
+        self.load_market_trade(callback=self.on_save_his_trades)
+        self.on_init_kline_trade()
+
+        #self.load_bar(days=2, interval=Interval.MINUTE, callback=self.on_init_vline_queue)
         #self.load_bar(days=2, interval=Interval.MINUTE, callback=self.on_init_vline)
+        #self.load_market_trade(callback=self.on_init_market_trade)
 
         # init local market data for bar
-        self.load_bar(days=2, interval=Interval.MINUTE, callback=self.on_kline)
-        self.load_bar(days=2, interval=Interval.MINUTE_5, callback=self.on_kline)
-        self.load_bar(days=2, interval=Interval.MINUTE_15, callback=self.on_kline)
-        self.load_bar(days=2, interval=Interval.MINUTE_30, callback=self.on_kline)
-        self.load_bar(days=7, interval=Interval.HOUR, callback=self.on_kline)
-        self.load_bar(days=7, interval=Interval.HOUR_4, callback=self.on_kline)
-        self.load_bar(days=60, interval=Interval.DAILY, callback=self.on_kline)
+        if False:
+            self.load_bar(days=2, interval=Interval.MINUTE, callback=self.on_kline)
+            self.load_bar(days=2, interval=Interval.MINUTE_5, callback=self.on_kline)
+            self.load_bar(days=2, interval=Interval.MINUTE_15, callback=self.on_kline)
+            self.load_bar(days=2, interval=Interval.MINUTE_30, callback=self.on_kline)
+            self.load_bar(days=7, interval=Interval.HOUR, callback=self.on_kline)
+            self.load_bar(days=7, interval=Interval.HOUR_4, callback=self.on_kline)
+            self.load_bar(days=60, interval=Interval.DAILY, callback=self.on_kline)
 
         # load account and balance
         self.load_account()
         self.is_data_inited = True
+        self.trading = True
+
+        if True:
+            for vt_symbol in self.vg:
+                vlines = self.vg[vt_symbol].vlines
+                for vol in vlines:
+                    print(f'{vt_symbol}-{vol}:', len(vlines[vol]))
+
+    def on_save_his_trades(self, trade: TradeData):
+        self.his_trade_buf[trade.vt_symbol].append(trade)
+
+    def on_save_his_kline(self, bar: BarData):
+        self.his_kline_buf[bar.vt_symbol].append(bar)
+
+    def on_init_kline_trade(self):
+        for vt_symbol in self.vg:
+            his_trades = self.his_trade_buf[vt_symbol]
+            his_kline = self.his_kline_buf[vt_symbol]
+            for i, bar in enumerate(his_kline):
+                if bar.datetime < his_trades[0].datetime:
+                    self.vg[vt_symbol].init_by_kline(bar=bar)
+                    self.vqg[vt_symbol].init_by_kline(bar=bar)
+            for trade in his_trades:
+                #print(trade)
+                self.vg[vt_symbol].init_by_trade(trade=trade)
+                self.vqg[vt_symbol].init_by_trade(trade=trade)
+
+            # for vol in self.vg[vt_symbol].vlines:
+            #     vlines = self.vg[vt_symbol].vlines[vol]
+            #     for v in vlines:
+            #         print(v)
 
     def init_account(self):
         pass
@@ -233,6 +287,7 @@ class GridVline(CtaTemplate):
        pass
 
     def on_init_market_trade(self, trade: TradeData):
+        print(trade)
         for vt_symbol in self.vqg:
             if trade.vt_symbol == vt_symbol:
                 self.vqg[vt_symbol].init_by_trade(trade=trade)
@@ -242,11 +297,13 @@ class GridVline(CtaTemplate):
 
     def on_init_vline_queue(self, bar: BarData):
         # init load_bar data is from reversed order
+        print(bar)
         for vt_symbol in self.vqg:
             if bar.vt_symbol == vt_symbol:
                 self.vqg[vt_symbol].init_by_kline(bar=bar)
 
     def on_init_vline(self, bar: BarData):
+        print(bar)
         for vt_symbol in self.vg:
             if bar.vt_symbol == vt_symbol:
                 self.vg[vt_symbol].init_by_kline(bar=bar)
@@ -286,43 +343,54 @@ class GridVline(CtaTemplate):
 
     def on_market_trade(self, trade: TradeData):
         self.trade_buf.append(trade)
-        if random.uniform(0, 1) < self.buy_prob and False:
-            price = trade.price
-            volume = 10
-            self.send_order(Direction.LONG, price=price, volume=volume)
-        print(trade)
-        for vol in self.vqg[self.vt_symbol].vq:
-            pos = self.vqg[self.vt_symbol].vq[vol].less_vol(trade.price)
-            total_vol = self.vqg[self.vt_symbol].vq[vol].vol
-            print('%.4f %.4f' % (pos*100, total_vol))
 
-    def calc_pro_buy(self, price: float, price_ref: float, theta: float, global_prob: float):
+        if random.uniform(0, 1) < self.buy_prob:
+            price = trade.price
+            volume = np.round(random.uniform(0, 1)*self.trade_amount/price, 2)
+            if volume*price > 5:
+                self.send_order(Direction.LONG, price=price, volume=volume, offset=Offset.NONE)
+        if random.uniform(0, 1) < self.sell_prob:
+            price = trade.price
+            volume = np.round(random.uniform(0, 1)*self.trade_amount/price, 2)
+            if volume*price > 5:
+                self.send_order(Direction.SHORT, price=price, volume=volume, offset=Offset.NONE)
+
+        if False:
+            print(trade)
+            for vol in self.vqg[self.vt_symbol].vq:
+                pos = self.vqg[self.vt_symbol].vq[vol].less_vol(trade.price)
+                total_vol = self.vqg[self.vt_symbol].vq[vol].vol
+                print('%.4f %.4f' % (pos*100, total_vol))
+
+    def calc_pro_buy(self, price: float, price_ref: float, theta: float, global_prob: float, min_p: float=0.01):
         buy_ref_price = (price_ref - price) / (price * theta)
         p_buy = global_prob * (0.5 * (np.tanh(buy_ref_price)) + 0.5)
+        if p_buy < min_p:
+            p_buy = 0
         return p_buy
 
-    def calc_pro_sell(self, price: float, price_ref: float, theta: float, global_prob: float):
+    def calc_pro_sell(self, price: float, price_ref: float, theta: float, global_prob: float, min_p: float=0.01):
         sell_ref_price = (price - price_ref) / (price * theta)
         p_sell = global_prob * (0.5 * (np.tanh(sell_ref_price)) + 0.5)
+        if p_sell < min_p:
+            p_sell = 0
         return p_sell
 
     def on_vline(self, vline: VlineData, vol: int):
-        #print(vline)
         if not self.is_data_inited:
             return
         price = vline.avg_price
-        p_buy = self.calc_pro_buy(price=price, price_ref=self.buy_ref_price, theta=self.theta, global_prob=self.global_prob)
-        p_sell = self.calc_pro_sell(price=price, price_ref=self.sell_ref_price, theta=self.theta, global_prob=self.global_prob)
-        #p_buy[p_buy < 0.01] = 0
-        #p_sell[p_sell < 0.01] = 0
-        if p_buy < 0.01:
-            p_buy = 0
-        if p_sell < 0.01:
-            p_sell = 0
-        self.buy_prob = p_buy
-        self.sell_prob = p_sell
+        if self.buy_ref_price:
+            p_buy = self.calc_pro_buy(price=price, price_ref=self.buy_ref_price, theta=self.theta, global_prob=self.global_prob)
+            self.buy_prob = p_buy
+        if self.sell_ref_price:
+            p_sell = self.calc_pro_sell(price=price, price_ref=self.sell_ref_price, theta=self.theta, global_prob=self.global_prob)
+            self.sell_prob = p_sell
+
         print(f'Price: {price} Buy Prob: {self.buy_prob}')
         print(f'Price: {price} Sell Prob: {self.sell_prob}')
+
+        # stop trading when several case happen
 
     def on_kline(self, bar: BarData):
         self.kline_buf.append(bar)
@@ -360,7 +428,7 @@ class GridVline(CtaTemplate):
         #print('OnAccount:', self.balance_info.data[currency])
 
     def on_balance(self, balance_data: BalanceData):
-        print(balance_data)
+        print('OnBalance:', balance_data)
 
     def make_decision(self):
         pass
@@ -370,13 +438,13 @@ class GridVline(CtaTemplate):
         if data init, update market trades for vline queue generator, vline generator
         '''
 
-        if self.timer_count == 20:
-            print('20')
-            #vt_orderids = self.buy(price=4.5, volume=2)
-            self.trading = True
-            vt_orderids = self.buy(price=6.5, volume=1)
-            print('20')
-            print(vt_orderids)
+        # if self.timer_count == 20:
+        #     print('20')
+        #     #vt_orderids = self.buy(price=4.5, volume=2)
+        #     self.trading = True
+        #     vt_orderids = self.buy(price=6.5, volume=1)
+        #     print('20')
+        #     print(vt_orderids)
 
         if self.is_data_inited:
             for t in self.trade_buf:
@@ -425,13 +493,15 @@ class GridVline(CtaTemplate):
             #print(self.buy_ref_price, local_low_price_ind)
             #print(self.sell_ref_price, local_high_price_ind)
 
-            total_ind = []
-            total_ind.extend(local_low_price_ind)
-            total_ind.extend(local_high_price_ind)
-            total_ind = sorted(total_ind)
-            for i in range(len(total_ind)):
-                ind = total_ind[i]
-                print('%04d' % ind, vlines[ind])
+            if True:
+                total_ind = []
+                total_ind.extend(local_low_price_ind)
+                total_ind.extend(local_high_price_ind)
+                total_ind = sorted(total_ind)
+                print(self.timer_count)
+                for i in range(len(total_ind)):
+                    ind = total_ind[i]
+                    print('%04d' % ind, vlines[ind])
 
         if False and self.timer_count % 30 == 0:
             '''
