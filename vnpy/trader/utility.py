@@ -793,13 +793,13 @@ class VlineQueueGenerator:
 
     def init_by_trade(self, trade: TradeData):
         for vol in self.vol_list:
-            if vol <= self.init_thresh_vol:
-                self.vq[vol].init_trade(trade=trade)
+            #if vol <= self.init_thresh_vol:
+            self.vq[vol].init_trade(trade=trade)
 
     def init_by_kline(self, bar: BarData):
         for vol in self.vol_list:
-            if vol > self.init_thresh_vol:
-                self.vq[vol].init_kline(bar=bar)
+            #if vol > self.init_thresh_vol:
+            self.vq[vol].init_kline(bar=bar)
 
 
 class VlineQueue:
@@ -821,10 +821,7 @@ class VlineQueue:
 
     def init_kline(self, bar: BarData):
         trade = bar2trade(bar)
-        self.last_trade = trade
-        self.push(trade=trade)
-        while self.size() > self.max_vol:
-            self.pop()
+        self.init_trade(trade=trade)
 
     def init_trade(self, trade: TradeData):
         self.last_trade = trade
