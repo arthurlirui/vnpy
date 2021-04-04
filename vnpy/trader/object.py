@@ -636,11 +636,11 @@ class BalanceData(BaseData):
     def __post_init__(self):
         """"""
         self.vt_symbol = f"{self.currency}.{self.exchange.value}"
-        if self.available and self.frozen:
-            self.volume = self.available + self.frozen
+        #if self.available and self.frozen:
+        self.volume = self.available + self.frozen
 
     def __str__(self):
-        return '%s %s A:%.3f F:%.3f' % (self.currency, self.exchange.value, self.available, self.frozen)
+        return '%s %s V:%.3f A:%.3f F:%.3f' % (self.currency, self.exchange.value, self.volume, self.available, self.frozen)
 
 
 @dataclass
@@ -683,17 +683,6 @@ class AccountData(BaseData):
     balance: float = None
     frozen: float = None
     available: float = None
-
-    # def update_balance(self, balance_data: BalanceData) -> None:
-    #     if balance_data.vt_symbol in self.balance:
-    #         if balance_data.frozen:
-    #             self.balance[balance_data.vt_symbol].frozen = balance_data.frozen
-    #         if balance_data.available:
-    #             self.balance[balance_data.vt_symbol].available = balance_data.available
-    #         if self.balance[balance_data.vt_symbol].frozen and self.balance[balance_data.vt_symbol].available:
-    #             self.balance[balance_data.vt_symbol].volume = self.balance[balance_data.vt_symbol].frozen+self.balance[balance_data.vt_symbol].available
-    #     else:
-    #         self.balance[balance_data.vt_symbol] = balance_data
 
     def __post_init__(self):
         """"""

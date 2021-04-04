@@ -884,7 +884,7 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
         """"""
         req = {
             "action": "sub",
-            "ch": "accounts.update#3"
+            "ch": "accounts.update#2"
         }
         self.send_packet(req)
 
@@ -907,7 +907,7 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
 
     def on_data(self, packet: dict) -> None:
         """"""
-        print(packet)
+        #print(packet)
         if "sub" in packet["action"]:
             return
 
@@ -948,8 +948,6 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
                 available = float(data['available'])
                 ad.available = available
         #print(ad)
-
-
         # if not change_type:
         #     balance = float(data["balance"])
         #     if data["available"]:

@@ -94,6 +94,10 @@ class GridVline(CtaTemplate):
         self.symbols = ['bch3lusdt']
         self.exchanges = ['HUOBI']
 
+        self.base_currency = 'usdt'
+        self.quote_currency = 'bch3l'
+        self.symbol = self.base_currency+self.quote_currency
+
         # data buffer
         self.trade_buf = []
         self.kline_buf = []
@@ -149,7 +153,9 @@ class GridVline(CtaTemplate):
         #self.sell(price=11, volume=0.5)
         self.trade_amount = 20
 
-        # init invest position
+        # init invest position (usdt unit)
+        self.max_invest = 2000.0
+        self.cur_invest = 500.0
 
     def on_start(self):
         """
@@ -280,14 +286,14 @@ class GridVline(CtaTemplate):
             self.balance_info = balance_info
 
         for d in self.balance_info.data:
-            if self.balance_info.data[d].available > 0:
-                print(self.balance_info.data[d])
+            if self.balance_info.data[d].volume > 0:
+                print('load account:', self.balance_info.data[d])
 
     def on_init_tick(self, tick: TickData):
        pass
 
     def on_init_market_trade(self, trade: TradeData):
-        print(trade)
+        #print(trade)
         for vt_symbol in self.vqg:
             if trade.vt_symbol == vt_symbol:
                 self.vqg[vt_symbol].init_by_trade(trade=trade)
@@ -297,13 +303,13 @@ class GridVline(CtaTemplate):
 
     def on_init_vline_queue(self, bar: BarData):
         # init load_bar data is from reversed order
-        print(bar)
+        #print(bar)
         for vt_symbol in self.vqg:
             if bar.vt_symbol == vt_symbol:
                 self.vqg[vt_symbol].init_by_kline(bar=bar)
 
     def on_init_vline(self, bar: BarData):
-        print(bar)
+        #print(bar)
         for vt_symbol in self.vg:
             if bar.vt_symbol == vt_symbol:
                 self.vg[vt_symbol].init_by_kline(bar=bar)
@@ -344,16 +350,22 @@ class GridVline(CtaTemplate):
     def on_market_trade(self, trade: TradeData):
         self.trade_buf.append(trade)
 
-        if random.uniform(0, 1) < self.buy_prob:
-            price = trade.price
-            volume = np.round(random.uniform(0, 1)*self.trade_amount/price, 2)
-            if volume*price > 5:
-                self.send_order(Direction.LONG, price=price, volume=volume, offset=Offset.NONE)
-        if random.uniform(0, 1) < self.sell_prob:
-            price = trade.price
-            volume = np.round(random.uniform(0, 1)*self.trade_amount/price, 2)
-            if volume*price > 5:
-                self.send_order(Direction.SHORT, price=price, volume=volume, offset=Offset.NONE)
+        self.make_decision(price=trade.price)
+
+        # if random.uniform(0, 1) < self.buy_prob:
+        #     price = trade.price
+        #     volume = np.round(random.uniform(0, 1)*self.trade_amount/price, 2)
+        #     avail_volume = self.balance_info.data[self.quote_currency].available
+        #     volume = np.min(volume, avail_volume)
+        #     if volume*price > 5:
+        #         self.send_order(Direction.LONG, price=price, volume=volume, offset=Offset.NONE)
+        # if random.uniform(0, 1) < self.sell_prob:
+        #     price = trade.price
+        #     volume = np.round(random.uniform(0, 1)*self.trade_amount/price, 2)
+        #     avail_volume = self.balance_info.data[self.base_currency].available
+        #     volume = np.min(volume, avail_volume)
+        #     if volume*price > 5:
+        #         self.send_order(Direction.SHORT, price=price, volume=volume, offset=Offset.NONE)
 
         if False:
             print(trade)
@@ -380,15 +392,16 @@ class GridVline(CtaTemplate):
         if not self.is_data_inited:
             return
         price = vline.avg_price
-        if self.buy_ref_price:
-            p_buy = self.calc_pro_buy(price=price, price_ref=self.buy_ref_price, theta=self.theta, global_prob=self.global_prob)
-            self.buy_prob = p_buy
-        if self.sell_ref_price:
-            p_sell = self.calc_pro_sell(price=price, price_ref=self.sell_ref_price, theta=self.theta, global_prob=self.global_prob)
-            self.sell_prob = p_sell
-
-        print(f'Price: {price} Buy Prob: {self.buy_prob}')
-        print(f'Price: {price} Sell Prob: {self.sell_prob}')
+        self.update_trade_prob(price=price)
+        # if self.buy_ref_price:
+        #     p_buy = self.calc_pro_buy(price=price, price_ref=self.buy_ref_price, theta=self.theta, global_prob=self.global_prob)
+        #     self.buy_prob = p_buy
+        # if self.sell_ref_price:
+        #     p_sell = self.calc_pro_sell(price=price, price_ref=self.sell_ref_price, theta=self.theta, global_prob=self.global_prob)
+        #     self.sell_prob = p_sell
+        #
+        # if self.buy_prob > 0 or self.sell_prob > 0:
+        #     print('%.4f' % price + f'P_buy:{self.buy_prob} P_sell:{self.sell_prob}')
 
         # stop trading when several case happen
 
@@ -425,13 +438,102 @@ class GridVline(CtaTemplate):
                                      account_id=account_id,
                                      account_type=account_type,
                                      currency=currency, volume=accdata.balance)
-        #print('OnAccount:', self.balance_info.data[currency])
+        print('OnAccount:', self.balance_info.data[currency])
 
     def on_balance(self, balance_data: BalanceData):
         print('OnBalance:', balance_data)
 
-    def make_decision(self):
-        pass
+    def make_decision(self, price: float):
+        if random.uniform(0, 1) < self.buy_prob:
+            volume = np.round(random.uniform(0, 1) * self.trade_amount / price, 2)
+            avail_volume = self.balance_info.data[self.quote_currency].available
+            volume = np.min([volume, avail_volume])
+            if volume * price > 5:
+                self.send_order(Direction.LONG, price=price, volume=volume, offset=Offset.NONE)
+        if random.uniform(0, 1) < self.sell_prob:
+            volume = np.round(random.uniform(0, 1) * self.trade_amount / price, 2)
+            avail_volume = self.balance_info.data[self.base_currency].available
+            volume = np.min([volume, avail_volume])
+            if volume * price > 5:
+                self.send_order(Direction.SHORT, price=price, volume=volume, offset=Offset.NONE)
+
+    def update_ref_price(self):
+        '''update reference price for buy and sell'''
+        vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
+        if len(vlines) > self.max_num_vline:
+            vlines = vlines[-1 * self.max_num_vline:]
+        low_price = np.array([v.low_price for v in vlines])
+        high_price = np.array([v.high_price for v in vlines])
+        local_low_price_ind = argrelmin(low_price, order=self.vline_loca_order)[0]
+        local_high_price_ind = argrelmax(high_price, order=self.vline_loca_order)[0]
+        if len(local_low_price_ind) > self.max_local_num_extrema:
+            local_low_price_ind = local_low_price_ind[-1 * self.max_local_num_extrema:]
+        if len(local_high_price_ind) > self.max_local_num_extrema:
+            local_high_price_ind = local_high_price_ind[-1 * self.max_local_num_extrema:]
+
+        # choose latest ref price
+        if len(local_low_price_ind) > 0:
+            self.buy_ref_price = low_price[local_low_price_ind[-1]]
+        if len(local_high_price_ind) > 0:
+            self.sell_ref_price = high_price[local_high_price_ind[-1]]
+
+    def update_trade_prob(self, price: float):
+        if self.buy_ref_price:
+            p_buy = self.calc_pro_buy(price=price, price_ref=self.buy_ref_price, theta=self.theta, global_prob=self.global_prob)
+            self.buy_prob = p_buy
+        if self.sell_ref_price:
+            p_sell = self.calc_pro_sell(price=price, price_ref=self.sell_ref_price, theta=self.theta, global_prob=self.global_prob)
+            self.sell_prob = p_sell
+
+        if self.buy_prob > 0 or self.sell_prob > 0:
+            print('trade prob at price:%.4f buy:%.4f sell:%.4f' % (price, self.buy_prob, self.sell_prob))
+
+    def update_invest_position(self):
+        '''update cur_invest'''
+        # 1. check vline queue
+        symbol = self.vt_symbol.split('.')[0]
+
+        vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
+        if len(vlines) > 20:
+            price = np.mean([v.avg_price for v in vlines[-20:]])
+        else:
+            return
+
+        self.cur_invest = self.max_invest
+        if True:
+            vol = self.market_params[symbol]['vline_vol_list'][4]
+            pos = self.vqg[self.vt_symbol].vq[vol].less_vol(price=price)
+            if pos < 0.1 or pos > 0.9:
+                self.cur_invest = min(self.cur_invest, 0.4 * self.max_invest)
+        if True:
+            vol = self.market_params[symbol]['vline_vol_list'][5]
+            pos = self.vqg[self.vt_symbol].vq[vol].less_vol(price=price)
+            if pos < 0.1 or pos > 0.9:
+                self.cur_invest = min(self.cur_invest, 0.2 * self.max_invest)
+        print(f'InvLimit:{self.cur_invest}')
+
+        # for vol in self.vqg[self.vt_symbol].vq:
+        #     if vol == self.market_params[symbol]['vline_vol_list'][4]:
+        #         pos = self.vqg[self.vt_symbol].vq[vol].less_vol(price=price)
+        #         if pos < 0.1 or pos > 0.9:
+        #             cur_invest = min(cur_invest, 0.4*self.max_invest)
+        #         #else:
+        #         #    cur_invest = min(cur_invest, self.max_invest)
+        #         #print(f'InvLimit:{cur_invest4} Pos: {pos}')
+        #         self.cur_invest = min(self.cur_invest, cur_invest)
+        #     if vol == self.market_params[symbol]['vline_vol_list'][5]:
+        #         pos = self.vqg[self.vt_symbol].vq[vol].less_vol(price=price)
+        #         if pos < 0.1 or pos > 0.9:
+        #             cur_invest = min(0.2 * self.max_invest, cur_invest)
+        #         #else:
+        #         #    cur_invest = min(cur_invest, self.max_invest)
+        #         #print(f'InvLimit:{cur_invest5} Pos: {pos}')
+        #         self.cur_invest = min(self.cur_invest, cur_invest)
+        # print(f'InvLimit:{self.cur_invest}')
+
+    def update_strategy_params(self):
+        self.update_ref_price()
+        self.update_invest_position()
 
     def on_timer(self):
         '''
@@ -471,29 +573,11 @@ class GridVline(CtaTemplate):
                         print(len(vl), vl[0], vl[-1])
 
         if self.timer_count % 10 == 0:
-            '''update reference buy and sell price'''
-            vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
-            if len(vlines) > self.max_num_vline:
-                vlines = vlines[-1*self.max_num_vline:]
-            low_price = np.array([v.low_price for v in vlines])
-            high_price = np.array([v.high_price for v in vlines])
-            local_low_price_ind = argrelmin(low_price, order=self.vline_loca_order)[0]
-            local_high_price_ind = argrelmax(high_price, order=self.vline_loca_order)[0]
-            if len(local_low_price_ind) > self.max_local_num_extrema:
-                local_low_price_ind = local_low_price_ind[-1*self.max_local_num_extrema:]
-            if len(local_high_price_ind) > self.max_local_num_extrema:
-                local_high_price_ind = local_high_price_ind[-1*self.max_local_num_extrema:]
+            self.update_ref_price()
+        if self.timer_count % 100 == 0:
+            self.update_invest_position()
 
-            # choose latest ref price
-            if len(local_low_price_ind) > 0:
-                self.buy_ref_price = low_price[local_low_price_ind[-1]]
-            if len(local_high_price_ind) > 0:
-                self.sell_ref_price = high_price[local_high_price_ind[-1]]
-
-            #print(self.buy_ref_price, local_low_price_ind)
-            #print(self.sell_ref_price, local_high_price_ind)
-
-            if True:
+            if False:
                 total_ind = []
                 total_ind.extend(local_low_price_ind)
                 total_ind.extend(local_high_price_ind)
