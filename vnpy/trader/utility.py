@@ -880,7 +880,7 @@ class VlineQueue:
 
     def less_vol(self, price):
         ltvol = sum([self.dist[k] for k in self.dist if k*self.bin_size < price])
-        pc = ltvol / self.vol
+        pc = np.round(ltvol / self.vol, 8)
         return pc
 
     def __str__(self):
