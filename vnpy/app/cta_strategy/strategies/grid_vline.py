@@ -94,8 +94,8 @@ class GridVline(CtaTemplate):
         self.symbols = ['bch3lusdt']
         self.exchanges = ['HUOBI']
 
-        self.base_currency = 'usdt'
-        self.quote_currency = 'bch3l'
+        self.base_currency = 'bch3l'
+        self.quote_currency = 'usdt'
         self.symbol = self.base_currency+self.quote_currency
 
         # data buffer
@@ -452,7 +452,7 @@ class GridVline(CtaTemplate):
             if volume < 0.5:
                 return
             # 2. check current position
-            cur_position = self.balance_info.data[self.base_currency].volume
+            cur_position = self.balance_info.data[self.base_currency].available
             if cur_position*price > self.cur_invest:
                 return
             if volume * price > 5:
