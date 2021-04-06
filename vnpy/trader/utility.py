@@ -883,6 +883,18 @@ class VlineQueue:
         pc = np.round(ltvol / self.vol, 8)
         return pc
 
+    def top_k_price(self, k: float):
+        price_vol_list = [p for p in sorted(self.dist.items(), key=lambda x: x[0])]
+        total_vol = 0
+        for pv in price_vol_list:
+            price = pv[0]*self.bin_size
+            vol = pv[1]
+            total_vol += vol
+            p = total_vol/self.vol
+            if p > k:
+                return price
+        return None
+
     def __str__(self):
         outstr = ''
         for d in self.dist:
