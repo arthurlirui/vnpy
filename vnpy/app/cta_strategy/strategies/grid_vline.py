@@ -295,7 +295,6 @@ class GridVline(CtaTemplate):
        pass
 
     def on_init_market_trade(self, trade: TradeData):
-        #print(trade)
         for vt_symbol in self.vqg:
             if trade.vt_symbol == vt_symbol:
                 self.vqg[vt_symbol].init_by_trade(trade=trade)
@@ -305,13 +304,11 @@ class GridVline(CtaTemplate):
 
     def on_init_vline_queue(self, bar: BarData):
         # init load_bar data is from reversed order
-        #print(bar)
         for vt_symbol in self.vqg:
             if bar.vt_symbol == vt_symbol:
                 self.vqg[vt_symbol].init_by_kline(bar=bar)
 
     def on_init_vline(self, bar: BarData):
-        #print(bar)
         for vt_symbol in self.vg:
             if bar.vt_symbol == vt_symbol:
                 self.vg[vt_symbol].init_by_kline(bar=bar)
@@ -359,7 +356,7 @@ class GridVline(CtaTemplate):
         p_buy = global_prob * (0.5 * (np.tanh(buy_ref_price)) + 0.5)
         if p_buy < min_p:
             p_buy = 0
-        p_buy = np.round(p_buy, 2)
+        p_buy = float(np.round(p_buy, 2))
         return p_buy
 
     def calc_pro_sell(self, price: float, price_ref: float, theta: float, global_prob: float, min_p: float=0.01):
@@ -367,7 +364,7 @@ class GridVline(CtaTemplate):
         p_sell = global_prob * (0.5 * (np.tanh(sell_ref_price)) + 0.5)
         if p_sell < min_p:
             p_sell = 0
-        p_sell = np.round(p_sell, 2)
+        p_sell = float(np.round(p_sell, 2))
         return p_sell
 
     def on_vline(self, vline: VlineData, vol: int):
@@ -463,25 +460,25 @@ class GridVline(CtaTemplate):
             min_price = np.min([v.low_price for v in vlines[-20:]])
             if price < min_price:
                 if 1.0 > pos > 0.8:
-                    self.lower_break_count = 1.0 * self.max_break_count
+                    self.lower_break_count = int(4.0 * self.max_break_count)
                 elif 0.8 >= pos > 0.6:
-                    self.lower_break_count = 1.0 * self.max_break_count
+                    self.lower_break_count = int(3.0 * self.max_break_count)
                 elif 0.6 >= pos > 0.4:
-                    self.lower_break_count = 1.0 * self.max_break_count
+                    self.lower_break_count = int(2.0 * self.max_break_count)
                 else:
-                    self.lower_break_count = 1.0 * self.max_break_count
+                    self.lower_break_count = int(1.0 * self.max_break_count)
                 self.lower_break = True
         elif direction == Direction.SHORT:
             max_price = np.max([v.high_price for v in vlines[-20:]])
             if price > max_price:
                 if 0.0 < pos <= 0.2:
-                    self.upper_break_count = 1.5 * self.max_break_count
+                    self.upper_break_count = int(4 * self.max_break_count)
                 elif 0.2 < pos <= 0.4:
-                    self.upper_break_count = 1.5 * self.max_break_count
+                    self.upper_break_count = int(3 * self.max_break_count)
                 elif 0.4 < pos <= 0.6:
-                    self.upper_break_count = 1.5 * self.max_break_count
+                    self.upper_break_count = int(2 * self.max_break_count)
                 else:
-                    self.upper_break_count = 1.0 * self.max_break_count
+                    self.upper_break_count = int(1.0 * self.max_break_count)
                 #self.upper_break_count = self.max_break_count
                 self.upper_break = True
         else:
@@ -546,12 +543,12 @@ class GridVline(CtaTemplate):
         '''update reference price for buy and sell'''
         vol_list = self.market_params[self.symbol]['vline_vol_list']
         for i, vol in enumerate(vol_list):
-            self.buy_price[i] = np.round(self.vqg[self.vt_symbol].vq[vol].top_k_price(k=0.05), 4)
-            self.sell_price[i] = np.round(self.vqg[self.vt_symbol].vq[vol].top_k_price(k=0.95), 4)
+            self.buy_price[i] = float(np.round(self.vqg[self.vt_symbol].vq[vol].top_k_price(k=0.05), 4))
+            self.sell_price[i] = float(np.round(self.vqg[self.vt_symbol].vq[vol].top_k_price(k=0.95), 4))
             spread = np.abs(self.sell_price[i]-self.buy_price[i])/(0.5*(self.buy_price[i]+self.sell_price[i]))
             if spread < 0.04:
-                self.buy_price[i] = np.round(self.vqg[self.vt_symbol].vq[vol].top_k_price(k=0.03), 4)
-                self.sell_price[i] = np.round(self.vqg[self.vt_symbol].vq[vol].top_k_price(k=0.97), 4)
+                self.buy_price[i] = float(np.round(self.vqg[self.vt_symbol].vq[vol].top_k_price(k=0.03), 4))
+                self.sell_price[i] = float(np.round(self.vqg[self.vt_symbol].vq[vol].top_k_price(k=0.97), 4))
         self.buy_price0, self.sell_price0 = self.buy_price[0], self.sell_price[0]
         self.buy_price1, self.sell_price1 = self.buy_price[1], self.sell_price[1]
         self.buy_price2, self.sell_price2 = self.buy_price[2], self.sell_price[2]
@@ -582,6 +579,7 @@ class GridVline(CtaTemplate):
             if 0.95 < pos < 1.0:
                 self.min_invest = np.round(max((0.4 - 0.2 * i), 0.0) * self.total_invest, 4)
         '''
+        '''
         vol = vol_list[3]
         pos = self.vqg[self.vt_symbol].vq[vol].less_vol(price=price)
         min_pos = 0.3
@@ -593,7 +591,12 @@ class GridVline(CtaTemplate):
             self.max_invest = default_pos*self.total_invest
         if pos > max_pos:
             self.min_invest = 0
-        self.put_event()
+        '''
+        vol = vol_list[3]
+        pos = self.vqg[self.vt_symbol].vq[vol].less_vol(price=price)
+        pos_floor = np.floor(pos*10)/10
+        self.max_invest = np.round((1.0 - pos_floor) * self.total_invest)
+        self.min_invest = 0
         #print(f'MaxInv:{self.max_invest} MinInv:{self.min_invest}')
 
     def update_strategy_params(self):
@@ -639,6 +642,20 @@ class GridVline(CtaTemplate):
             #         vl = self.vg[self.vt_symbol].vlines[vi]
             #         if len(vl) > 0:
             #             print(len(vl), vl[0], vl[-1])
+
+    def update_variable(self):
+        # variables = ['timer_count', 'upper_break', 'lower_break', 'upper_break_count', 'lower_break_count', 'buy_prob',
+        #              'sell_prob', 'min_invest', 'max_invest', 'total_invest',
+        #              'buy_price0', 'sell_price0', 'buy_price1', 'sell_price1', 'buy_price2', 'sell_price2',
+        #              'buy_price3', 'sell_price3', 'buy_price4', 'sell_price4']
+        self.timer_count = int(self.timer_count)
+        self.upper_break_count = int(self.upper_break_count)
+        self.lower_break_count = int(self.lower_break_count)
+        self.buy_prob = float(self.buy_prob)
+        self.sell_prob = float(self.sell_prob)
+        self.min_invest = float(self.min_invest)
+        self.max_invest = float(self.max_invest)
+        self.total_invest = float(self.total_invest)
 
     def on_timer(self):
         '''
