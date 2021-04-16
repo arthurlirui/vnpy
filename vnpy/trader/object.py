@@ -361,15 +361,18 @@ class OrderBookData(BaseData):
             if len(bids) > 0:
                 for k in bids:
                     self.bids[k] = bids[k]
+                self.bids = dict(sorted([t for t in self.bids.items() if t[1] > 0], key=lambda x: x[0], reverse=True))
             if len(asks) > 0:
                 for k in asks:
                     self.asks[k] = asks[k]
+                self.asks = dict(sorted([t for t in self.asks.items() if t[1] > 0], key=lambda x: x[0]))
 
     def refresh(self, seq_num: int, time: datetime, bids: dict, asks: dict):
+        self.pre_seq_num = self.seq_num
         self.seq_num = seq_num
         self.time = time
-        self.bids = bids
-        self.asks = asks
+        self.bids = dict(sorted(self.bids.items(), key=lambda x: x[0], reverse=True))
+        self.asks = dict(sorted(self.asks.items(), key=lambda x: x[0]))
 
     def __post_init__(self):
         """"""

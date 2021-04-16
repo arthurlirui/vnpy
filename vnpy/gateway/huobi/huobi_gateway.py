@@ -1379,7 +1379,7 @@ class HuobiDataWebsocketApi(HuobiWebsocketApiBase):
             pass
 
     def on_mbp_refresh(self, data: dict) -> None:
-        print('on_mbp_refresh')
+        #print('on_mbp_refresh')
         symbol = data["ch"].split(".")[1]
         tick = data['tick']
         ts = data['ts']
@@ -1400,7 +1400,7 @@ class HuobiDataWebsocketApi(HuobiWebsocketApiBase):
         self.gateway.on_order_book(order_book=order_book)
 
     def on_mbp_incremental(self, data: dict) -> None:
-        print('on_mbp_incremental')
+        #print('on_mbp_incremental')
         symbol = data["ch"].split(".")[1]
         tick = data['tick']
         ts = data['ts']

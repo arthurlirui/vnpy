@@ -89,6 +89,9 @@ class GridVline(CtaTemplate):
         self.account_info = None
         self.balance_info = None
 
+        # order book buffer
+        self.order_book = None
+
         self.on_init()
 
     def on_init(self):
@@ -349,6 +352,28 @@ class GridVline(CtaTemplate):
 
     def on_order_book(self, order_book: OrderBookData):
         print(order_book)
+        if self.order_book:
+            if order_book.pre_seq_num == self.order_book.seq_num:
+                pre_seq_num = self.order_book.seq_num
+                seq_num = order_book.seq_num
+                time = order_book.time
+                bids = order_book.bids
+                asks = order_book.asks
+                self.order_book.update(seq_num=seq_num, pre_seq_num=pre_seq_num, time=time, bids=bids, asks=asks)
+            elif order_book.pre_seq_num == 0:
+                pre_seq_num = self.order_book.seq_num
+                seq_num = order_book.seq_num
+                time = order_book.time
+                bids = order_book.bids
+                asks = order_book.asks
+                self.order_book.refresh(seq_num=seq_num, time=time, bids=bids, asks=asks)
+        else:
+            if order_book.pre_seq_num == 0:
+                self.order_book = order_book
+
+        if self.order_book:
+            print(self.order_book.bids)
+            print(self.order_book.asks)
 
     def on_market_trade(self, trade: TradeData):
         self.trade_buf.append(trade)
