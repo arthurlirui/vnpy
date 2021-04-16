@@ -339,6 +339,47 @@ class TradeData(BaseData):
         return pstr
 
 
+class OrderBookData(BaseData):
+    """Market Depth Data Structure"""
+    def __init__(self, symbol: str, exchange: Exchange, gateway_name: str,
+                 time: datetime, seq_num: int, pre_seq_num: int, bids: dict, asks: dict):
+        self.symbol = symbol
+        self.exchange = exchange
+        self.vt_symbol = f"{self.symbol}.{self.exchange.value}"
+        self.gateway_name = gateway_name
+        self.time = time
+        self.seq_num = seq_num
+        # pre_seq_num=0 means refresh order book
+        self.pre_seq_num = pre_seq_num
+        self.bids = bids
+        self.asks = asks
+
+    def update(self, seq_num: int, pre_seq_num: int, time: datetime, bids: dict, asks: dict):
+        if pre_seq_num == self.seq_num:
+            self.seq_num = seq_num
+            self.time = time
+            if len(bids) > 0:
+                for k in bids:
+                    self.bids[k] = bids[k]
+            if len(asks) > 0:
+                for k in asks:
+                    self.asks[k] = asks[k]
+
+    def refresh(self, seq_num: int, time: datetime, bids: dict, asks: dict):
+        self.seq_num = seq_num
+        self.time = time
+        self.bids = bids
+        self.asks = asks
+
+    def __post_init__(self):
+        """"""
+        self.vt_symbol = f"{self.symbol}.{self.exchange.value}"
+
+    def __str__(self):
+        strs = f"{self.vt_symbol} {self.seq_num} Ask:{len(self.asks)} Bid:{len(self.bids)}"
+        return strs
+
+
 @dataclass
 class VlineData(BaseData):
     """

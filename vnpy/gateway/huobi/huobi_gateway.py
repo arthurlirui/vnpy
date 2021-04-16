@@ -29,6 +29,7 @@ from vnpy.trader.gateway import BaseGateway
 from vnpy.trader.object import (
     TickData,
     OrderData,
+    OrderBookData,
     TradeData,
     AccountData,
     BalanceData,
@@ -937,6 +938,7 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
             exchange=Exchange.HUOBI,
             account_id=accound_id,
             currency=currency,
+            accountid=currency,
             account_type=account_type,
             gateway_name=self.gateway_name,
         )
@@ -1336,6 +1338,20 @@ class HuobiDataWebsocketApi(HuobiWebsocketApiBase):
         req = {"sub": f"market.{symbol}.trade.detail", "id": str(self.req_id)}
         self.send_packet(req)
 
+        # subscribe mbp market data
+        # market.$symbol.mbp.$levels
+        self.req_id += 1
+        levels = 150
+        req = {"sub": f"market.{symbol}.mbp.{levels}", "id": str(self.req_id)}
+        self.send_packet(req)
+
+        # subscribe mbp
+        # market.$symbol.mbp.refresh.$levels
+        self.req_id += 1
+        levels = 20
+        req = {"sub": f"market.{symbol}.mbp.refresh.{levels}", "id": str(self.req_id)}
+        self.send_packet(req)
+
     def on_data(self, packet: dict) -> None:
         """"""
         channel = packet.get("ch", None)
@@ -1349,10 +1365,61 @@ class HuobiDataWebsocketApi(HuobiWebsocketApiBase):
                     self.on_market_detail(packet)
             elif "kline" in channel:
                 self.on_kline(packet)
+            elif "market" in channel:
+                if 'mbp' in channel:
+                    if 'refresh' in channel:
+                        self.on_mbp_refresh(packet)
+                    else:
+                        self.on_mbp_incremental(packet)
         elif "err-code" in packet:
             code = packet["err-code"]
             msg = packet["err-msg"]
             self.gateway.write_log(f"错误代码：{code}, 错误信息：{msg}")
+        else:
+            pass
+
+    def on_mbp_refresh(self, data: dict) -> None:
+        print('on_mbp_refresh')
+        symbol = data["ch"].split(".")[1]
+        tick = data['tick']
+        ts = data['ts']
+        time = generate_datetime(ts/1000, tzinfo=MY_TZ)
+        seq_num = tick['seqNum']
+        if 'bids' in tick:
+            bids_list = tick['bids']
+            bids = {}
+            for d in bids_list:
+                bids[d[0]] = d[1]
+        if 'asks' in tick:
+            asks_list = tick['asks']
+            asks = {}
+            for d in asks_list:
+                asks[d[0]] = d[1]
+        order_book = OrderBookData(symbol=symbol, exchange=Exchange.HUOBI, gateway_name=self.gateway_name,
+                                   time=time, seq_num=seq_num, pre_seq_num=0, bids=bids, asks=asks)
+        self.gateway.on_order_book(order_book=order_book)
+
+    def on_mbp_incremental(self, data: dict) -> None:
+        print('on_mbp_incremental')
+        symbol = data["ch"].split(".")[1]
+        tick = data['tick']
+        ts = data['ts']
+        time = generate_datetime(ts/1000, tzinfo=MY_TZ)
+        seq_num = tick['seqNum']
+        pre_seq_num = tick['prevSeqNum']
+        if 'bids' in tick:
+            bids_list = tick['bids']
+            bids = {}
+            for d in bids_list:
+                bids[d[0]] = d[1]
+        if 'asks' in tick:
+            asks_list = tick['asks']
+            asks = {}
+            for d in asks_list:
+                asks[d[0]] = d[1]
+        order_book = OrderBookData(symbol=symbol, exchange=Exchange.HUOBI, gateway_name=self.gateway_name,
+                                   time=time, seq_num=seq_num, pre_seq_num=pre_seq_num, bids=bids, asks=asks)
+        self.gateway.on_order_book(order_book=order_book)
 
     def on_market_depth(self, data: dict) -> None:
         """行情深度推送 """

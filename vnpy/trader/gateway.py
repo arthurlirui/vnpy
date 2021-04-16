@@ -17,11 +17,13 @@ from .event import (
     EVENT_LOG,
     EVENT_KLINE,
     EVENT_MARKET_TRADE,
-    EVENT_BALANCE
+    EVENT_BALANCE,
+    EVENT_ORDER_BOOK
 )
 from .object import (
     TickData,
     OrderData,
+    OrderBookData,
     TradeData,
     PositionData,
     AccountData,
@@ -102,6 +104,10 @@ class BaseGateway(ABC):
         self.on_event(EVENT_TICK, tick)
         self.on_event(EVENT_TICK + tick.vt_symbol, tick)
 
+    def on_order_book(self, order_book: OrderBookData):
+        self.on_event(EVENT_ORDER_BOOK, order_book)
+        self.on_event(EVENT_ORDER_BOOK + order_book.vt_symbol, order_book)
+
     def on_kline(self, bar: BarData):
         self.on_event(EVENT_KLINE, bar)
         self.on_event(EVENT_KLINE+bar.vt_symbol, bar)
@@ -139,7 +145,7 @@ class BaseGateway(ABC):
         Account event push.
         Account event of a specific vt_accountid is also pushed.
         """
-        print('gateway', account)
+        #print('gateway', account)
         self.on_event(EVENT_ACCOUNT, account)
         self.on_event(EVENT_ACCOUNT + str(account.account_id), account)
 

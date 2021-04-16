@@ -36,7 +36,8 @@ from vnpy.trader.event import (
     EVENT_MARKET_TRADE,
     EVENT_KLINE,
     EVENT_ACCOUNT,
-    EVENT_BALANCE
+    EVENT_BALANCE,
+    EVENT_ORDER_BOOK
 )
 from vnpy.trader.constant import (
     Direction,
@@ -133,6 +134,7 @@ class CtaEngine(BaseEngine):
         self.event_engine.register(EVENT_TIMER, self.process_timer_event)
         self.event_engine.register(EVENT_ACCOUNT, self.process_account_event)
         self.event_engine.register(EVENT_BALANCE, self.process_balance_event)
+        self.event_engine.register(EVENT_ORDER_BOOK, self.process_order_book_event)
 
     def init_rqdata(self):
         """
@@ -177,6 +179,17 @@ class CtaEngine(BaseEngine):
             for strategy in strategies:
                 if strategy.inited:
                     self.call_strategy_func(strategy, strategy.on_account, accdata)
+
+    def process_order_book_event(self, event: Event):
+        order_book_data = event.data
+        strategies = self.symbol_strategy_map.get(order_book_data.vt_symbol, None)
+
+        if not strategies:
+            return
+
+        for strategy in strategies:
+            if strategy.inited:
+                self.call_strategy_func(strategy, strategy.on_order_book, order_book_data)
 
     def process_balance_event(self, event: Event):
         balance_data = event.data
