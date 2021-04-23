@@ -34,6 +34,10 @@ from vnpy.app.cta_strategy import (
     ArrayManager,
 )
 
+import pytz
+SAUDI_TZ = pytz.timezone("Asia/Qatar")
+MY_TZ = SAUDI_TZ
+
 
 class GridVline(CtaTemplate):
     """"""
@@ -85,6 +89,9 @@ class GridVline(CtaTemplate):
         self.kline_buf = []
         self.tick_buf = []
 
+        # account trade buffer
+        self.account_trade = []
+
         # working account: spot account
         self.account_info = None
         self.balance_info = None
@@ -111,11 +118,9 @@ class GridVline(CtaTemplate):
         # init vline generator
         self.vg = {}
         self.init_vline_generator()
-
         self.kqg = BarQueueGenerator()
-
         self.is_data_inited = False
-        self.trading = False
+        #self.trading = False
         self.init_data()
 
         self.last_tick = None
@@ -150,8 +155,12 @@ class GridVline(CtaTemplate):
         self.upper_break = True
         self.lower_break = True
 
-        self.pre_trade = []
-        self.live_timedelta = datetime.timedelta(hours=12)
+        # previous buy or sell price
+        self.prev_long_price = None
+        self.prev_short_price = None
+
+        #self.pre_trade = []
+        #self.live_timedelta = datetime.timedelta(hours=12)
 
         self.buy_price0 = None
         self.sell_price0 = None
@@ -194,7 +203,6 @@ class GridVline(CtaTemplate):
         self.load_bar(days=2, interval=Interval.MINUTE, callback=self.on_save_his_kline)
         self.load_market_trade(callback=self.on_save_his_trades)
         self.on_init_kline_trade()
-
         self.load_account_trade(callback=self.on_trade)
 
         #self.load_bar(days=2, interval=Interval.MINUTE, callback=self.on_init_vline_queue)
@@ -418,8 +426,18 @@ class GridVline(CtaTemplate):
         self.kline_buf.append(bar)
 
     def on_trade(self, trade: TradeData):
-        print('OnTrade:', trade)
-        #self.pre_trade.append(trade)
+        if len(self.account_trade) > 0:
+            if trade.datetime > self.account_trade[-1].datetime:
+                self.account_trade.append(trade)
+            else:
+                for i, td in enumerate(self.account_trade):
+                    if trade.datetime < td.datetime:
+                        self.account_trade.insert(i, trade)
+                        break
+        else:
+            self.account_trade.append(trade)
+        if len(self.account_trade):
+            print(f'{len(self.account_trade)} {self.account_trade[-1]}')
 
     def on_order(self, order: OrderData):
         print('OnOrder:', order)
@@ -634,6 +652,29 @@ class GridVline(CtaTemplate):
         self.max_invest = np.round((1.0 - pos_floor) * self.total_invest)
         self.min_invest = 0
         #print(f'MaxInv:{self.max_invest} MinInv:{self.min_invest}')
+
+    def update_avg_trade_price(self):
+        long_price = 0
+        long_pos = 0
+        short_price = 0
+        short_pos = 0
+
+        # self.balance_info.data[self.base_currency]
+        for i, at in enumerate(reversed(self.account_trade)):
+            if at.datetime > datetime.datetime.now(tz=MY_TZ) - datetime.timedelta(hours=6):
+                if at.direction == Direction.LONG and long_pos < self.balance_info.data[self.base_currency]:
+                    long_price += at.price*at.volume
+                    long_pos += at.volume
+                if at.direction == Direction.SHORT:
+                    short_price += at.price*at.volume
+                    short_pos += at.volume
+
+        long_price = float(np.round(long_price/long_pos, 4))
+        #long_pos = float(np.round(long_pos, 4))
+        short_price = float(np.round(short_price/short_pos, 4))
+        #short_pos = float(np.round(short_pos, 4))
+        self.prev_long_price = long_price
+        self.prev_short_price = short_price
 
     def update_strategy_params(self):
         self.update_ref_price()

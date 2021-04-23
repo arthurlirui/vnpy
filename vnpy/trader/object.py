@@ -325,8 +325,8 @@ class TradeData(BaseData):
         self.direction = direction
 
         self.offset = Offset.NONE
-        self.price = price
-        self.volume = volume
+        self.price = float(np.round(self.price, 4))
+        self.volume = float(np.round(volume, 4))
         self.datetime = datetime
 
         self.gateway_name = gateway_name
@@ -564,23 +564,26 @@ class OrderData(BaseData):
     of a specific order.
     """
 
-    symbol: str
-    exchange: Exchange
-    orderid: str
+    def __init__(self, symbol: str, exchange: Exchange, orderid: str, gateway_name: str,
+                 type: OrderType = OrderType.LIMIT, direction: Direction = None, offset: Offset = Offset.NONE,
+                 price: float = 0, volume: float = 0, traded: float = 0,
+                 remain_amount: float = 0, exec_amount: float = 0, status: Status = Status.SUBMITTING,
+                 datetime: datetime = None):
+        self.symbol = symbol
+        self.exchange = exchange
+        self.gateway_name = gateway_name
+        self.orderid = orderid
+        self.type = type
+        self.direction = direction
+        self.offset = offset
+        self.price = price
+        self.volume = volume
+        self.traded = traded
+        self.remain_amount = remain_amount
+        self.exec_amount = exec_amount
+        self.status = status
+        self.datetime = datetime
 
-    type: OrderType = OrderType.LIMIT
-    direction: Direction = None
-    offset: Offset = Offset.NONE
-    price: float = 0
-    volume: float = 0
-    traded: float = 0
-    remain_amount: float = 0
-    exec_amount: float = 0
-    status: Status = Status.SUBMITTING
-    datetime: datetime = None
-
-    def __post_init__(self):
-        """"""
         self.vt_symbol = f"{self.symbol}.{self.exchange.value}"
         self.vt_orderid = f"{self.gateway_name}.{self.orderid}"
 
@@ -601,6 +604,10 @@ class OrderData(BaseData):
             orderid=self.orderid, symbol=self.symbol, exchange=self.exchange
         )
         return req
+
+    def __str__(self):
+        strs = f'{self.vt_symbol} {self.price} {self.volume} {self.type} {self.direction} {self.datetime}'
+        return  strs
 
 
 @dataclass
