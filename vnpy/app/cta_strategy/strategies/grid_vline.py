@@ -195,6 +195,8 @@ class GridVline(CtaTemplate):
         self.load_market_trade(callback=self.on_save_his_trades)
         self.on_init_kline_trade()
 
+        self.load_account_trade(callback=self.on_trade)
+
         #self.load_bar(days=2, interval=Interval.MINUTE, callback=self.on_init_vline_queue)
         #self.load_bar(days=2, interval=Interval.MINUTE, callback=self.on_init_vline)
         #self.load_market_trade(callback=self.on_init_market_trade)
@@ -276,6 +278,9 @@ class GridVline(CtaTemplate):
     def load_market_trade(self, callback: Callable):
         self.cta_engine.load_market_trade(self.vt_symbol, callback=callback)
 
+    def load_account_trade(self, callback: Callable):
+        self.cta_engine.load_account_trade(vt_symbol=self.vt_symbol, callback=callback)
+
     def load_account(self, account_type='spot'):
         accounts = self.cta_engine.load_account_data(self.vt_symbol)
         account_info = None
@@ -348,10 +353,10 @@ class GridVline(CtaTemplate):
     def on_tick(self, tick: TickData):
         self.tick_buf.append(tick)
         self.last_tick = tick
-        print(self.last_tick)
+        #print('Tick:', self.last_tick)
 
     def on_order_book(self, order_book: OrderBookData):
-        print(order_book)
+        #print(order_book)
         if self.order_book:
             if order_book.pre_seq_num == self.order_book.seq_num:
                 pre_seq_num = self.order_book.seq_num
@@ -371,14 +376,15 @@ class GridVline(CtaTemplate):
             if order_book.pre_seq_num == 0:
                 self.order_book = order_book
 
-        if self.order_book:
+        if self.order_book and False:
             print(self.order_book.bids)
             print(self.order_book.asks)
 
     def on_market_trade(self, trade: TradeData):
         self.trade_buf.append(trade)
         self.last_trade = trade
-        self.make_decision(price=trade.price)
+        #print('on_market_trade:', self.last_trade)
+        #self.make_decision(price=trade.price)
 
     def calc_pro_buy(self, price: float, price_ref: float, theta: float, global_prob: float, min_p: float=0.01):
         buy_ref_price = (price_ref - price) / (price * theta)
@@ -413,7 +419,7 @@ class GridVline(CtaTemplate):
 
     def on_trade(self, trade: TradeData):
         print('OnTrade:', trade)
-        self.pre_trade.append(trade)
+        #self.pre_trade.append(trade)
 
     def on_order(self, order: OrderData):
         print('OnOrder:', order)

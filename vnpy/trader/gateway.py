@@ -34,6 +34,7 @@ from .object import (
     CancelRequest,
     SubscribeRequest,
     HistoryRequest,
+    AccountTradeRequest,
     Exchange,
     BarData
 )
@@ -257,6 +258,10 @@ class BaseGateway(ABC):
         """
         for req in reqs:
             self.cancel_order(req)
+
+    @abstractmethod
+    def query_account_trade(self, req: AccountTradeRequest) -> None:
+        pass
 
     @abstractmethod
     def query_account(self) -> None:

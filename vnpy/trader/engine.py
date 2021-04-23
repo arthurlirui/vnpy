@@ -30,6 +30,7 @@ from .object import (
     OrderRequest,
     SubscribeRequest,
     HistoryRequest,
+    AccountTradeRequest,
     OrderData,
     BarData,
     TickData,
@@ -230,6 +231,13 @@ class MainEngine:
         gateway = self.get_gateway(gateway_name)
         if gateway:
             return gateway.query_history(req)
+        else:
+            return None
+
+    def query_account_trade(self, req: AccountTradeRequest, gateway_name: str):
+        gateway = self.get_gateway(gateway_name)
+        if gateway:
+            return gateway.query_account_trade(req=req)
         else:
             return None
 

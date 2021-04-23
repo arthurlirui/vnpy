@@ -42,7 +42,8 @@ from vnpy.trader.object import (
     CancelRequest,
     SubscribeRequest,
     HistoryRequest,
-    BalanceData
+    BalanceData,
+    AccountTradeRequest
 )
 
 
@@ -144,7 +145,7 @@ class HuobiGateway(BaseGateway):
 
     def on_order(self, order: OrderData) -> None:
         """"""
-        print(self.orders)
+        #print(self.orders)
         self.orders[order.orderid] = order
         super().on_order(order)
 
@@ -182,6 +183,9 @@ class HuobiGateway(BaseGateway):
     def query_account(self) -> None:
         """"""
         return self.rest_api.query_account()
+
+    def query_account_trade(self, req: AccountTradeRequest):
+        return self.rest_api.query_account_trade(req)
 
     def query_balance(self, req: BalanceRequest):
         return self.rest_api.query_balance(req=req)
@@ -297,6 +301,60 @@ class HuobiRestApi(RestClient):
         #    req = BalanceRequest(account_id=accid, exchange=self.accounts[accid].exchange)
         #    balance_info = self.query_balance(req=req)
         #    print(balance_info)
+
+    def query_account_trade(self, req: AccountTradeRequest):
+        '''
+        {'status': 'ok',
+        'data': [{'id': 261488992259212, 'symbol': 'bch3lusdt', 'account-id': 13712814, 'client-order-id': '', 'amount': '0.300000000000000000', 'price': '21.963500000000000000', 'created-at': 1619126929252, 'type': 'buy-limit', 'field-amount': '0.300000000000000000', 'field-cash-amount': '6.578160000000000000', 'field-fees': '0.000600000000000000', 'finished-at': 1619126929271, 'source': 'spot-web', 'state': 'filled', 'canceled-at': 0},
+        {'id': 261493271038807, 'symbol': 'bch3lusdt', 'account-id': 13712814, 'client-order-id': '', 'amount': '0.300000000000000000', 'price': '21.660600000000000000', 'created-at': 1619126907193, 'type': 'buy-limit', 'field-amount': '0.0', 'field-cash-amount': '0.0', 'field-fees': '0.0', 'finished-at': 1619126920622, 'source': 'spot-web', 'state': 'canceled', 'canceled-at': 1619126920616}]}
+        '''
+        params = {}
+        if req.symbol:
+            params['symbol'] = req.symbol
+        if req.start_time:
+            params['start_time'] = req.start_time
+        if req.end_time:
+            params['end_time'] = req.end_time
+        if req.size:
+            params['size'] = req.size
+        else:
+            params['size'] = 1000
+
+        # Get response from server
+        resp = self.request("GET", "/v1/order/history", params=params)
+        #print(resp.json())
+        rawdata = resp.json()
+        if rawdata['status'] == 'ok':
+            data = rawdata['data']
+            trades = []
+            for d in data:
+                #print(d)
+                if d['state'] != 'filled':
+                    continue
+                if 'buy' in d['type']:
+                    direction = Direction.LONG
+                elif 'sell' in d['type']:
+                    direction = Direction.SHORT
+                else:
+                    direction = Direction.NONE
+                symbol = d['symbol']
+                price = round(float(d['price']), 8)
+                volume = round(float(d['field-amount']), 8)
+                dt = generate_datetime(timestamp=d['created-at'] / 1000.0, tzinfo=MY_TZ)
+                # offset = Offset.NONE
+                trade = TradeData(symbol=symbol,
+                                  exchange=req.exchange,
+                                  orderid=int(d['id']),
+                                  direction=direction,
+                                  price=price,
+                                  volume=volume,
+                                  datetime=dt,
+                                  gateway_name=self.gateway_name)
+                trades.append(trade)
+            return trades
+        else:
+            print(rawdata)
+            return []
 
     def query_market_status(self):
         self.add_request(
@@ -537,14 +595,6 @@ class HuobiRestApi(RestClient):
 
     def on_query_market_status(self, data: dict, request: Request):
         """"""
-        # 市场状态（1=normal, 2=halted, 3=cancel-only）
-        market_status = data["data"]["marketStatus"]
-        if market_status == 1:
-            self.gateway.write_log(f"Market Status: normal")
-        elif market_status == 2:
-            self.gateway.write_log(f"Market Status: halted")
-        elif market_status == 3:
-            self.gateway.write_log(f"Market Status: cancel-only")
         '''
         {
             "code": 200,
@@ -554,6 +604,19 @@ class HuobiRestApi(RestClient):
             }
         }
         '''
+        # 市场状态（1=normal, 2=halted, 3=cancel-only）
+        market_status = data["data"]["marketStatus"]
+        if market_status == 1:
+            self.gateway.write_log(f"Market Status: normal")
+        elif market_status == 2:
+            self.gateway.write_log(f"Market Status: halted")
+        elif market_status == 3:
+            self.gateway.write_log(f"Market Status: cancel-only")
+        else:
+            self.gateway.write_log(f"Market Status: Unknown")
+
+    def on_query_account_trade(self, data: dict, request: Request = None) -> None:
+        pass
 
     def on_query_account(self, data: dict, request: Request = None) -> None:
         """"""
@@ -572,7 +635,7 @@ class HuobiRestApi(RestClient):
                              account_type=account_type,
                              account_subtype=account_subtype)
             self.accounts[ad.account_id] = ad
-            print('huobi_gateway:', ad)
+            #print('huobi_gateway:', ad)
             #self.gateway.on_account(ad)
             accounts.append(ad)
         return accounts
@@ -1000,7 +1063,7 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
         order_side = data['orderSize']
         order_time = generate_datetime(data['lastActTime'], tzinfo=MY_TZ)
         order_status = STATUS_HUOBI2VT[data['orderStatus']]
-        print(data)
+        #print(data)
 
     def parse_deletion(self, data):
         '''
@@ -1196,47 +1259,26 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
 
     def on_order(self, data: dict) -> None:
         """"""
-        print('huobi data:', data)
-        event_type = data['eventType']
+        # process order data
         od = self.gen_huobi_order(data)
-        print(od)
-
-        #orderid = data["clientOrderId"]
-
-        #for ord in self.gateway.orders:
-        #    print(ord)
-
-        #if not order:
-        #    return
-        #print('huobi order:', od)
         self.gateway.on_order(od)
         order = self.gateway.get_order(od.orderid)
-        print(order)
 
-        # traded_volume = float(data.get("tradeVolume", 0))
-        #
-        # # Push order event
-        # order.traded += traded_volume
-        # order.status = STATUS_HUOBI2VT.get(data["orderStatus"], None)
-        # self.gateway.on_order(order)
-        #
-        # # Push trade event
-        # if not traded_volume:
-        #     return
-        #
-        # trade = TradeData(
-        #     symbol=order.symbol,
-        #     exchange=Exchange.HUOBI,
-        #     orderid=order.orderid,
-        #     tradeid=str(data["tradeId"]),
-        #     direction=order.direction,
-        #     price=float(data["tradePrice"]),
-        #     volume=float(data["tradeVolume"]),
-        #     datetime=datetime.now(MY_TZ),
-        #     gateway_name=self.gateway_name,
-        # )
-        # print('Huobi:', trade)
-        # self.gateway.on_trade(trade)
+        # process trade data
+        if order.status == Status.ALLTRADED or order.status == Status.PARTTRADED:
+            trade = TradeData(
+                symbol=order.symbol,
+                exchange=Exchange.HUOBI,
+                orderid=order.orderid,
+                tradeid=str(data["tradeId"]),
+                direction=order.direction,
+                price=float(data["tradePrice"]),
+                volume=float(data["tradeVolume"]),
+                datetime=datetime.now(MY_TZ),
+                gateway_name=self.gateway_name,
+            )
+            print(trade)
+            self.gateway.on_trade(trade)
 
 
 class HuobiDataWebsocketApi(HuobiWebsocketApiBase):
@@ -1462,6 +1504,7 @@ class HuobiDataWebsocketApi(HuobiWebsocketApiBase):
         symbol = data['ch'].split('.')[1]
         market_trade = self.trades[symbol]
         trade_data = data['tick']['data']
+        #print(trade_data)
         for td in trade_data:
             price = td['price']
             volume = td['amount']

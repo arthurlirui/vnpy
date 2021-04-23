@@ -23,7 +23,8 @@ from vnpy.trader.object import (
     BarData,
     ContractData,
     BalanceInfo,
-    AccountInfo
+    AccountInfo,
+    AccountTradeRequest
 )
 
 from vnpy.event.engine import EVENT_TIMER
@@ -226,13 +227,13 @@ class CtaEngine(BaseEngine):
     def process_order_event(self, event: Event):
         """"""
         order = event.data
-        print('process_order_event:', order)
+        #print('process_order_event:', order)
         self.offset_converter.update_order(order)
 
         #strategy = self.orderid_strategy_map.get(order.vt_orderid, None)
         #print(self.symbol_strategy_map)
         strategies = self.symbol_strategy_map.get(order.vt_symbol, None)
-        print(strategies)
+        #print(strategies)
         if len(strategies) == 0:
             return
 
@@ -241,7 +242,7 @@ class CtaEngine(BaseEngine):
             if not strategy.inited:
                 continue
             vt_orderids = self.strategy_orderid_map[strategy.strategy_name]
-            print(vt_orderids)
+            #print(vt_orderids)
             if order.vt_orderid in vt_orderids and not order.is_active():
                 vt_orderids.remove(order.vt_orderid)
 
@@ -663,6 +664,32 @@ class CtaEngine(BaseEngine):
 
         for tick in ticks:
             callback(tick)
+
+    def load_account_trade(self, vt_symbol: str, callback: Callable):
+        contract = self.main_engine.get_contract(vt_symbol)
+        '''
+        exchange: Exchange
+        vt_symbol: str
+        account_id: str
+        symbol: str
+        start_time: int
+        end_time: int
+        direct: str
+        size: int
+        '''
+        symbol, exchange = vt_symbol.split('.')
+        # req = AccountTradeRequest(exchange=contract.exchange,
+        #                           vt_symbol=vt_symbol,
+        #                           account_id=account_id,
+        #                           symbol=symbol,
+        #                           start_time=
+        #                           account_id=account_id)
+        req = AccountTradeRequest(exchange=contract.exchange, vt_symbol=vt_symbol)
+
+        trades = self.main_engine.query_account_trade(req=req, gateway_name=contract.gateway_name)
+        for trade in trades:
+            callback(trade)
+        #return trades
 
     def load_account_data(self, vt_symbol: str):
         contract = self.main_engine.get_contract(vt_symbol)

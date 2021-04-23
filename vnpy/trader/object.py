@@ -320,7 +320,7 @@ class TradeData(BaseData):
     symbol: str
     exchange: Exchange
     orderid: str
-    tradeid: str
+    tradeid: str = None
     direction: Direction = None
 
     offset: Offset = Offset.NONE
@@ -855,6 +855,16 @@ class CancelRequest:
         """"""
         self.vt_symbol = f"{self.symbol}.{self.exchange.value}"
 
+@dataclass
+class AccountTradeRequest:
+    exchange: Exchange
+    vt_symbol: str = None
+    account_id: str = None
+    symbol: str = None
+    start_time: int = None
+    end_time: int = None
+    direct: str = None
+    size: int = None
 
 @dataclass
 class BalanceRequest:
