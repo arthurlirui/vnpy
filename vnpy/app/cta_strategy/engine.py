@@ -267,31 +267,23 @@ class CtaEngine(BaseEngine):
     def process_trade_event(self, event: Event):
         """"""
         trade = event.data
-
-        # Filter duplicate trade push
-        if trade.vt_tradeid in self.vt_tradeids:
-            return
-        self.vt_tradeids.add(trade.vt_tradeid)
-
-        self.offset_converter.update_trade(trade)
-
-        strategy = self.orderid_strategy_map.get(trade.vt_orderid, None)
-        if not strategy:
+        strategies = self.symbol_strategy_map.get(trade.vt_symbol, None)
+        if len(strategies) == 0:
             return
 
-        # Update strategy pos before calling on_trade method
-        if trade.direction == Direction.LONG:
-            strategy.pos += trade.volume
-        else:
-            strategy.pos -= trade.volume
+        print('process_trade_event:', trade)
+        # Remove vt_orderid if order is no longer active.
+        for strategy in strategies:
+            if not strategy.inited:
+                continue
+            #vt_orderids = self.strategy_orderid_map[strategy.strategy_name]
 
-        self.call_strategy_func(strategy, strategy.on_trade, trade)
+            self.call_strategy_func(strategy, strategy.on_trade, trade)
+            # Sync strategy variables to data file
+            self.sync_strategy_data(strategy)
+            # Update GUI
+            self.put_strategy_event(strategy)
 
-        # Sync strategy variables to data file
-        self.sync_strategy_data(strategy)
-
-        # Update GUI
-        self.put_strategy_event(strategy)
 
     def process_timer_event(self, event: Event):
         for sn in self.strategies:

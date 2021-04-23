@@ -338,8 +338,16 @@ class HuobiRestApi(RestClient):
                 else:
                     direction = Direction.NONE
                 symbol = d['symbol']
-                price = round(float(d['price']), 8)
-                volume = round(float(d['field-amount']), 8)
+                if 'market' in d['type']:
+                    price = round(float(d['field-cash-amount'])/float(d['field-amount']), 8)
+                    volume = round(float(d['field-amount']), 8)
+                elif 'limit' in d['type']:
+                    price = round(float(d['price']), 8)
+                    volume = round(float(d['field-amount']), 8)
+                else:
+                    price = round(float(d['price']), 8)
+                    volume = round(float(d['field-amount']), 8)
+
                 dt = generate_datetime(timestamp=d['created-at'] / 1000.0, tzinfo=MY_TZ)
                 # offset = Offset.NONE
                 trade = TradeData(symbol=symbol,

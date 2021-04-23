@@ -310,26 +310,27 @@ class BarData(BaseData):
         return False
 
 
-@dataclass
 class TradeData(BaseData):
     """
     Trade data contains information of a fill of an order. One order
     can have several trade fills.
     """
+    def __init__(self, symbol: str, exchange: Exchange, gateway_name: str, price: float = 0,
+                 volume: float = 0, datetime: datetime = None, direction: Direction = Direction.NONE,
+                 orderid: str = None, tradeid: str = None):
+        self.symbol = symbol
+        self.exchange = exchange
+        self.orderid = orderid
+        self.tradeid = tradeid
+        self.direction = direction
 
-    symbol: str
-    exchange: Exchange
-    orderid: str
-    tradeid: str = None
-    direction: Direction = None
+        self.offset = Offset.NONE
+        self.price = price
+        self.volume = volume
+        self.datetime = datetime
 
-    offset: Offset = Offset.NONE
-    price: float = 0
-    volume: float = 0
-    datetime: datetime = None
+        self.gateway_name = gateway_name
 
-    def __post_init__(self):
-        """"""
         self.vt_symbol = f"{self.symbol}.{self.exchange.value}"
         self.vt_orderid = f"{self.gateway_name}.{self.orderid}"
         self.vt_tradeid = f"{self.gateway_name}.{self.tradeid}"
