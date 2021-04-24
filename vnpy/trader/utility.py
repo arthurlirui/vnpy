@@ -1069,6 +1069,12 @@ class BarQueueGenerator:
 
         self.barq[bar.vt_symbol][bar.interval].update_bar(bar=bar)
 
+    def get_bars(self, vt_symbol: str, interval: Interval):
+        if vt_symbol in self.barq:
+            if interval in self.barq[vt_symbol]:
+                return self.barq[vt_symbol][interval].bars
+        return []
+
 
 class BarQueue:
     def __init__(self, interval: Interval, vt_symbol: str):
