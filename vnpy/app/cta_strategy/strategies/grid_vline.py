@@ -58,7 +58,7 @@ class GridVline(CtaTemplate):
                  'buy_price0', 'sell_price0', 'buy_price1', 'sell_price1', 'buy_price2', 'sell_price2', 'buy_price3', 'sell_price3', 'buy_price4', 'sell_price4']
 
     usdt_vol_list = [10, 40, 160, 640, 2560, 10240, 40960]
-    bch3l_vol_list = [10000, 40000, 160000, 640000, 2560000]
+    bch3l_vol_list = [1000, 10000, 100000, 1000000]
     #market_params = {'btcusdt': {'vline_vol': 10, 'vline_vol_list': usdt_vol_list, 'bin_size': 1.0},
     #                 'bch3lusdt': {'vline_vol': 10, 'vline_vol_list': usdt_vol_list, 'bin_size': 0.01}}
     market_params = {'bch3lusdt': {'vline_vol': 100, 'vline_vol_list': bch3l_vol_list, 'bin_size': 0.01}}
@@ -90,7 +90,8 @@ class GridVline(CtaTemplate):
         self.tick_buf = []
 
         # account trade buffer
-        self.account_trade = []
+        self.account_trades = []
+        self.orders = {}
 
         # working account: spot account
         self.account_info = None
@@ -426,21 +427,22 @@ class GridVline(CtaTemplate):
         self.kline_buf.append(bar)
 
     def on_trade(self, trade: TradeData):
-        if len(self.account_trade) > 0:
-            if trade.datetime > self.account_trade[-1].datetime:
-                self.account_trade.append(trade)
+        if len(self.account_trades) > 0:
+            if trade.datetime > self.account_trades[-1].datetime:
+                self.account_trades.append(trade)
             else:
-                for i, td in enumerate(self.account_trade):
+                for i, td in enumerate(self.account_trades):
                     if trade.datetime < td.datetime:
-                        self.account_trade.insert(i, trade)
+                        self.account_trades.insert(i, trade)
                         break
         else:
-            self.account_trade.append(trade)
-        if len(self.account_trade):
-            print(f'{len(self.account_trade)} {self.account_trade[-1]}')
+            self.account_trades.append(trade)
+        if len(self.account_trades):
+            print(f'{len(self.account_trades)} {self.account_trades[-1]}')
 
     def on_order(self, order: OrderData):
         print('OnOrder:', order)
+        self.orders[order.vt_orderid] = order
 
     def on_account(self, accdata: AccountData):
         if accdata.account_id != self.account_info.account_id:
@@ -525,11 +527,11 @@ class GridVline(CtaTemplate):
             max_price = np.max([v.high_price for v in vlines[-30:]])
             if price > max_price:
                 if 0.0 < pos <= 0.2:
-                    self.upper_break_count = int(2 * self.max_break_count)
+                    self.upper_break_count = int(2.0 * self.max_break_count)
                 elif 0.2 < pos <= 0.4:
-                    self.upper_break_count = int(2 * self.max_break_count)
+                    self.upper_break_count = int(2.0 * self.max_break_count)
                 elif 0.4 < pos <= 0.6:
-                    self.upper_break_count = int(2 * self.max_break_count)
+                    self.upper_break_count = int(2.0 * self.max_break_count)
                 else:
                     self.upper_break_count = int(1.0 * self.max_break_count)
                 #self.upper_break_count = self.max_break_count
@@ -660,7 +662,7 @@ class GridVline(CtaTemplate):
         short_pos = 0
 
         # self.balance_info.data[self.base_currency]
-        for i, at in enumerate(reversed(self.account_trade)):
+        for i, at in enumerate(reversed(self.account_trades)):
             if at.datetime > datetime.datetime.now(tz=MY_TZ) - datetime.timedelta(hours=6):
                 if at.direction == Direction.LONG and long_pos < self.balance_info.data[self.base_currency]:
                     long_price += at.price*at.volume
@@ -754,15 +756,18 @@ class GridVline(CtaTemplate):
                 price = self.last_trade.price
                 self.check_price_break(price=price, direction=Direction.LONG)
                 self.check_price_break(price=price, direction=Direction.SHORT)
-
                 self.update_ref_price()
                 #self.update_trade_prob(price=price)
                 self.update_invest_position()
 
         if self.timer_count % 60 == 0 and self.timer_count > 10:
             self.update_break_count()
+            for orderid in self.orders:
+                order = self.orders[orderid]
+                if order.datetime < datetime.datetime.now(tz=MY_TZ) - datetime.timedelta(minutes=10):
+                    self.cancel_order(order.vt_orderid)
 
-        if self.timer_count % 1200 == 0 and self.timer_count > 10:
+        if self.timer_count % 3600 == 0 and self.timer_count > 10:
             self.cancel_all()
 
         self.timer_count += 1

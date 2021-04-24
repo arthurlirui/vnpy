@@ -325,7 +325,7 @@ class TradeData(BaseData):
         self.direction = direction
 
         self.offset = Offset.NONE
-        self.price = float(np.round(self.price, 4))
+        self.price = float(np.round(price, 4))
         self.volume = float(np.round(volume, 4))
         self.datetime = datetime
 
@@ -606,8 +606,8 @@ class OrderData(BaseData):
         return req
 
     def __str__(self):
-        strs = f'{self.vt_symbol} {self.price} {self.volume} {self.type} {self.direction} {self.datetime}'
-        return  strs
+        strs = f'{self.vt_symbol} {self.price} {self.volume} {self.type.value} {self.direction.value} {self.status.value} {self.datetime}'
+        return strs
 
 
 @dataclass

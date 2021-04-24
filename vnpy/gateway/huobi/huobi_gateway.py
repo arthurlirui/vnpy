@@ -1131,6 +1131,9 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
         order_status = STATUS_HUOBI2VT[data['orderStatus']]
         time_in_s = data['orderCreateTime']/1000.0
         order_time = generate_datetime(time_in_s, tzinfo=MY_TZ)
+        order_value = 0
+        order_size = 0
+        order_price = 0
 
         if 'buy' in order_type:
             direction = Direction.LONG
@@ -1146,8 +1149,10 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
             order_value = order_size * order_price
         if 'market' in order_type:
             order_type_vt = OrderType.MARKET
-            order_value = float(data['orderValue'])
-            order_size = 0
+            if 'buy' in order_type:
+                order_value = float(data['orderValue'])
+            if 'sell' in order_type:
+                order_size = float(data['orderSize'])
             order_price = 0
             #order_size = order_value / order_price
 
