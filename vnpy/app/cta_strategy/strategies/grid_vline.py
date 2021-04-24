@@ -389,6 +389,7 @@ class GridVline(CtaTemplate):
         self.check_price_break(price=price, direction=Direction.LONG)
         self.check_price_break(price=price, direction=Direction.SHORT)
         self.make_decision(price=trade.price)
+        self.put_event()
 
     def calc_pro_buy(self, price: float, price_ref: float, theta: float, global_prob: float, min_p: float=0.01):
         buy_ref_price = (price_ref - price) / (price * theta)
@@ -436,8 +437,11 @@ class GridVline(CtaTemplate):
                     break
 
     def on_order(self, order: OrderData):
-        print('OnOrder:', order)
-        self.orders[order.vt_orderid] = order
+        if order.status == Status.NOTTRADED or order.status == Status.SUBMITTING:
+            print('OnOrder:', order)
+            self.orders[order.vt_orderid] = order
+        #else:
+        #    del self.orders[order.vt_orderid]
 
     def on_account(self, accdata: AccountData):
         if accdata.account_id != self.account_info.account_id:
@@ -498,9 +502,15 @@ class GridVline(CtaTemplate):
         return volume
 
     def check_price_break(self, price: float, direction: Direction):
+        if not self.is_data_inited:
+            return
         kline_1m = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=Interval.MINUTE)
-        min_price = np.min([kl.low_price for kl in kline_1m[-1*self.max_break_count:-1]])
-        max_price = np.max([kl.low_price for kl in kline_1m[-1*self.max_break_count:-1]])
+        if len(kline_1m) < 20:
+            return
+
+        min_price = np.min([kl.low_price for kl in kline_1m[-20:-1]])
+        max_price = np.max([kl.high_price for kl in kline_1m[-20:-1]])
+        #print('min:', min_price, 'max:', max_price)
 
         #vol = self.market_params[self.symbol]['vline_vol']
         #vlines = self.vg[self.vt_symbol].vlines[vol]
@@ -511,21 +521,25 @@ class GridVline(CtaTemplate):
 
         if direction == Direction.LONG:
             #min_price = np.min([v.low_price for v in vlines[-30:]])
-            if price < min_price:
+            if price <= min_price:
                 if 0.5 < self.pos < 1.0:
                     self.lower_break_count = int(1.5 * self.max_break_count)
-                elif 0.0 < self.pos < 0:
+                elif 0.1 <= self.pos < 0.5:
                     self.lower_break_count = int(1.0 * self.max_break_count)
+                elif 0.0 <= self.pos < 0.1:
+                    self.lower_break_count = int(0.5 * self.max_break_count)
                 else:
                     self.lower_break_count = int(1.0 * self.max_break_count)
                 self.lower_break = True
         elif direction == Direction.SHORT:
             #max_price = np.max([v.high_price for v in vlines[-30:]])
-            if price > max_price:
+            if price >= max_price:
                 if 0.0 < self.pos < 0.5:
                     self.upper_break_count = int(1.5 * self.max_break_count)
-                elif 0.5 < self.pos < 1.0:
+                elif 0.5 <= self.pos < 0.9:
                     self.upper_break_count = int(1.0 * self.max_break_count)
+                elif 0.9 <= self.pos < 1.0:
+                    self.upper_break_count = int(0.5 * self.max_break_count)
                 else:
                     self.upper_break_count = int(1.0 * self.max_break_count)
                 #self.upper_break_count = self.max_break_count
@@ -535,7 +549,7 @@ class GridVline(CtaTemplate):
 
     def generate_order(self, price: float, volume: float, direction: Direction,
                        w1: float = 1.0, w2: float = 1.0, w3: float = 1.0):
-        volume1 = volume * w1
+        volume1 = float(np.round(volume * w1, 2))
         #volume2 = volume * w2
         #volume3 = volume * w3
         #if volume*price > 5 or volume1*price > 5 or volume2*price > 5 or volume3*price > 5:
@@ -581,7 +595,7 @@ class GridVline(CtaTemplate):
             volume = self.generate_volume(price=price, direction=direction)
             # 2. price break
             #self.check_price_break(price=price, direction=direction)
-            print('In BUY:', volume)
+            print('In buy:', volume, self.lower_break, self.trading_quota)
             if not self.lower_break and self.trading_quota:
                 # 3. send multiple orders
                 self.generate_order(price=price, volume=volume, direction=direction)
@@ -593,15 +607,16 @@ class GridVline(CtaTemplate):
             # 2. price break
             #self.check_price_break(price=price, direction=direction)
             print('In sell:', volume)
+            # if no upper breaking
             if not self.upper_break:
                 # 3. send multiple orders
-                if self.prev_buy_price:
-                    if self.prev_buy_price < 0.98*price:
-                        self.generate_order(price=price, volume=volume, direction=direction)
-                        print('Sending buy order:', price)
-                else:
-                    self.generate_order(price=price, volume=volume, direction=direction)
-                    print('Sending buy order:', price)
+                print('Stop upper breaking:', price)
+                self.generate_order(price=price, volume=volume, direction=direction)
+
+            # or if has profit
+            if self.prev_buy_price and price > 1.05 * self.prev_buy_price:
+                print('Has a good price:', price)
+                self.generate_order(price=price, volume=volume, direction=direction)
 
     def update_ref_price(self):
         '''update reference price for buy and sell'''
@@ -694,7 +709,7 @@ class GridVline(CtaTemplate):
         # self.balance_info.data[self.base_currency]
         for i, at in enumerate(reversed(self.account_trades)):
             if at.datetime > datetime.datetime.now(tz=MY_TZ) - datetime.timedelta(hours=6):
-                if at.direction == Direction.LONG and long_pos < self.balance_info.data[self.base_currency]:
+                if at.direction == Direction.LONG and long_pos < self.balance_info.data[self.base_currency].available:
                     long_price += at.price*at.volume
                     long_pos += at.volume
                 if at.direction == Direction.SHORT:
@@ -795,10 +810,10 @@ class GridVline(CtaTemplate):
         if self.timer_count % 60 == 0 and self.timer_count > 10:
             #self.update_ref_price()
             self.update_break_count()
-            for orderid in self.orders:
-                order = self.orders[orderid]
-                if order.datetime < datetime.datetime.now(tz=MY_TZ) - datetime.timedelta(minutes=10):
-                    self.cancel_order(order.vt_orderid)
+            # for orderid in self.orders:
+            #     order = self.orders[orderid]
+            #     if order.datetime < datetime.datetime.now(tz=MY_TZ) - datetime.timedelta(minutes=10):
+            #         self.cancel_order(order.vt_orderid)
             self.trading_quota = True
 
         if self.timer_count % 3600 == 0 and self.timer_count > 10:
