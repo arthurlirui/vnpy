@@ -13,6 +13,9 @@ from scipy.signal import argrelextrema, argrelmin, argrelmax
 import numpy as np
 import random
 import datetime
+import matplotlib.pyplot as plt
+#from scipy.misc import electrocardiogram
+from scipy.signal import find_peaks
 
 from vnpy.trader.constant import (
     Direction,
@@ -60,7 +63,9 @@ class GridVline(CtaTemplate):
 
     variables = ['timer_count', 'upper_break', 'lower_break', 'upper_break_count', 'lower_break_count',
                  'buy_prob', 'sell_prob', 'min_invest', 'max_invest', 'total_invest',
-                 'buy_price', 'sell_price', 'vol_select', 'prev_buy_price', 'prev_sell_price', 'trading_quota']
+                 'buy_price', 'sell_price', 'vol_select',
+                 'prev_buy_price', 'prev_sell_price',
+                 'is_kill_down', 'prev_high_price', 'is_chase_up', 'prev_low_price', 'trading_quota']
 
     #usdt_vol_list = [10, 40, 160, 640, 2560, 10240, 40960]
     bch3l_vol_list = [1000, 10000, 100000, 1000000]
@@ -165,6 +170,12 @@ class GridVline(CtaTemplate):
         # previous buy or sell price
         self.prev_buy_price = None
         self.prev_sell_price = None
+
+        # previous high and low peaks
+        self.prev_high_price = None
+        self.prev_low_price = None
+        self.is_chase_up = False
+        self.is_kill_down = False
 
         # trading quota
         self.trading_quota = True
@@ -484,80 +495,81 @@ class GridVline(CtaTemplate):
     def on_balance(self, balance_data: BalanceData):
         print('OnBalance:', balance_data)
 
-    def generate_volume(self, price: float, direction: Direction) -> float:
+    def generate_volume(self, price: float, direction: Direction,
+                        check_balance=True,
+                        check_position=True,
+                        check_probability=True,
+                        check_price_break=True,
+                        check_price=True,
+                        check_break_risk=True,
+                        check_quota=True) -> float:
         volume = 0.0
         if direction == Direction.LONG:
             # 1. check balance
             volume = random.uniform(0, 1) * self.trade_amount / price
-            avail_volume = self.balance_info.data[self.quote_currency].available
-            volume = np.round(np.min([volume, avail_volume / price]), 4)
+            if check_balance:
+                avail_volume = self.balance_info.data[self.quote_currency].available
+                volume = np.round(np.min([volume, avail_volume / price]), 4)
+                print(f'check_balance {direction.value} {volume}')
             # 2. check position
-            cur_position = self.balance_info.data[self.base_currency].available*price
-            if cur_position > self.max_invest:
-                volume = np.round(volume*0.5, 4)
-            # 3. check probability
-            if self.sell_prob > self.buy_prob or self.sell_prob > 0.03:
-                volume = np.round(volume*0.25, 4)
-            # 4. lower price break
-            if self.lower_break:
-                volume = np.round(volume * 0.0, 4)
-            # 5. profit check
-            ratio = 1.0
-            if price < 0.95 * self.buy_price:
-                ratio = 0.0
-            volume = np.round(volume * ratio, 4)
-
-            # ratio = 0
-            # if price > 0.95 * self.buy_price:
-            #     ratio = 1.0
-            # elif 0.9 * self.buy_price < price < 0.95 * self.buy_price:
-            #     # 5.1: stop buying at 0.95 buy price
-            #     ratio = 0.0
-            # elif price < 0.9 * self.buy_price and self.upper_break:
-            #     # 5.2: buy at re-bouncing
-            #     ratio = 1.0
-            # else:
-            #     ratio = 0.0
-            # volume = np.round(volume * ratio, 4)
-
-            # 6. has trading quota
-            if not self.trading_quota:
-                volume = np.round(volume * 0.0, 4)
+            if check_position:
+                cur_position = self.balance_info.data[self.base_currency].available*price
+                if cur_position > self.max_invest:
+                    volume = np.round(volume * 0.0, 4)
+                    print(f'check_position {direction.value} {volume}')
         elif direction == Direction.SHORT:
             # 1. check balance
-            volume = np.round(random.uniform(0, 1) * self.trade_amount / price, 2)
-            avail_volume = self.balance_info.data[self.base_currency].available
-            volume = np.round(np.min([volume, avail_volume]), 4)
+            if check_balance:
+                volume = np.round(random.uniform(0, 1) * self.trade_amount / price, 2)
+                avail_volume = self.balance_info.data[self.base_currency].available
+                volume = np.round(np.min([volume, avail_volume]), 4)
+                print(f'check_balance {direction.value} {volume}')
             # 2. check position
-            cur_position = self.balance_info.data[self.base_currency].available*price
-            if cur_position < self.min_invest:
-                volume = np.round(volume*0.5, 4)
+            if check_position:
+                cur_position = self.balance_info.data[self.base_currency].available*price
+                if cur_position < self.min_invest:
+                    volume = np.round(volume * 1.0, 4)
+                print(f'check_position {direction.value} {volume}')
             # 3. check probability
-            if self.buy_prob > self.sell_prob or self.buy_prob > 0.03:
-                volume = np.round(volume*0.25, 4)
+            if check_probability:
+                if self.buy_prob > self.sell_prob or self.buy_prob > 0.03:
+                    volume = np.round(volume*0.0, 4)
+                print(f'check_probability {direction.value} {volume}')
             # 4. check profit
-            ratio = 1.0
-            if price > 1.05 * self.sell_price:
-                ratio = 0.0
-            volume = np.round(volume * ratio, 4)
-
-            # if self.prev_buy_price:
-            #     # stop loss here
-            #     if price < 0.95 * self.prev_buy_price and self.lower_break:
-            #         ratio = 1.0
-            #         volume = np.round(volume * ratio, 4)
-            # else:
-            #     if price < 0.95 * self.buy_price:
-            #         pass
-            #     r = np.round((price / self.sell_price - 1.0) * 10 + 1.0, 4)
-            #     ratio = max(min(r, 2), 0)
-            #     volume = np.round(volume * ratio, 4)
-
+            if check_price:
+                ratio = 1.0
+                if self.prev_buy_price and False:
+                    if price < 1.02 * self.prev_buy_price:
+                        ratio = 0.0
+                    elif 1.02 * self.prev_buy_price < price < 1.05 * self.prev_buy_price:
+                        ratio = 1.0
+                    else:
+                        ratio = 2.0
+                else:
+                    if price < self.sell_price:
+                        ratio = 0.25
+                    elif price > self.sell_price:
+                        ratio = 1.0
+                    else:
+                        ratio = 0.0
+                volume = np.round(volume * ratio, 4)
+                print(f'check_price {direction.value} {volume}')
             # 5. upper price breaking
-            if self.upper_break:
-                volume = np.round(volume*0.0, 4)
-            if not self.trading_quota:
-                volume = np.round(volume*0.0, 4)
+            if check_price_break:
+                if self.upper_break:
+                    volume = np.round(volume * 0.0, 4)
+                print(f'check_price_break {direction.value} {volume}')
+            # 5.1 price break risk
+            if check_break_risk:
+                if price > 1.05 * self.sell_price:
+                    ratio = 0.25
+                    volume = np.round(volume * ratio, 4)
+                print(f'check_break_risk {direction.value} {volume}')
+            # 6. has trading quota
+            if check_quota:
+                if not self.trading_quota:
+                    volume = np.round(volume*0.0, 4)
+                print(f'check_quota {direction.value} {volume}')
         else:
             volume = 0.0
         return volume
@@ -571,13 +583,6 @@ class GridVline(CtaTemplate):
 
         min_price = np.min([kl.low_price for kl in kline_1m[-20:-1]])
         max_price = np.max([kl.high_price for kl in kline_1m[-20:-1]])
-        #print('min:', min_price, 'max:', max_price)
-
-        #vol = self.market_params[self.symbol]['vline_vol']
-        #vlines = self.vg[self.vt_symbol].vlines[vol]
-        #vol_list = self.market_params[self.symbol]['vline_vol_list']
-        #vol = vol_list[3]
-
         self.pos = self.vqg[self.vt_symbol].vq[self.vol_select].less_vol(price=price)
 
         if direction == Direction.LONG:
@@ -608,12 +613,8 @@ class GridVline(CtaTemplate):
         else:
             pass
 
-    def generate_order(self, price: float, volume: float, direction: Direction,
-                       w1: float = 1.0, w2: float = 1.0, w3: float = 1.0):
+    def generate_order(self, price: float, volume: float, direction: Direction, w1: float = 1.0, w2: float = 1.0, w3: float = 1.0):
         volume1 = float(np.round(volume * w1, 2))
-        #volume2 = volume * w2
-        #volume3 = volume * w3
-        #if volume*price > 5 or volume1*price > 5 or volume2*price > 5 or volume3*price > 5:
         if direction == Direction.LONG:
             if random.uniform(0, 1) < 0.5 or True:
                 price = np.round(price * (1 - random.uniform(-1, 1) * 0.001), 4)
@@ -621,12 +622,6 @@ class GridVline(CtaTemplate):
                 price = np.round(list(self.order_book.bids.keys())[0]+0.0001, 4)
             if volume1*price > 5:
                 self.send_order(direction, price=price, volume=volume1, offset=Offset.NONE)
-            # price = np.round(price * (1 - random.uniform(0, 1) * 0.002), 4)
-            # if volume2 * price > 5:
-            #     self.send_order(direction, price=price, volume=volume2, offset=Offset.NONE)
-            # price = np.round(price * (1 - random.uniform(0, 1) * 0.003), 4)
-            # if volume3 * price > 5:
-            #     self.send_order(direction, price=price, volume=volume3, offset=Offset.NONE)
         elif direction == Direction.SHORT:
             if random.uniform(0, 1) < 0.5 or True:
                 price = np.round(price * (1 + random.uniform(-1, 1) * 0.001), 4)
@@ -634,77 +629,318 @@ class GridVline(CtaTemplate):
                 price = np.round(list(self.order_book.asks.keys())[0]-0.0001, 4)
             if volume1 * price > 5:
                 self.send_order(direction, price=price, volume=volume1, offset=Offset.NONE)
-            # price = np.round(price * (1 + random.uniform(0, 1) * 0.002), 4)
-            # if volume2 * price > 5:
-            #     self.send_order(direction, price=price, volume=volume2, offset=Offset.NONE)
-            # price = np.round(price * (1 + random.uniform(0, 1) * 0.003), 4)
-            # if volume3 * price > 5:
-            #     self.send_order(direction, price=price, volume=volume3, offset=Offset.NONE)
         else:
             return
+
+    def make_decision_swing_trading(self, price: float, direction: Direction):
+        exec_order = False
+        ratio = 1.0
+        pass_probability = False
+        pass_price_break = False
+        pass_trade_price = False
+        pass_fall_down = False
+        pass_quota = False
+        if direction == Direction.LONG:
+            # 1. check probability
+            if self.sell_prob > self.buy_prob or self.sell_prob > 0.03:
+                ratio = ratio * 0.0
+                pass_probability = True
+            # 2. lower price break
+            if self.lower_break:
+                ratio = ratio * 0.0
+                pass_price_break = True
+            # 3. check prev_buy_price
+            if self.prev_buy_price:
+                if price < 0.995 * self.prev_buy_price:
+                    ratio = ratio * 0.5
+                elif 0.98 * self.prev_buy_price < price < 0.995 * self.prev_buy_price:
+                    ratio = ratio * 0.75
+                elif 0.95 * self.prev_buy_price < price < 0.98 * self.prev_buy_price:
+                    ratio = ratio * 1.0
+                else:
+                    ratio = ratio * 0.0
+                pass_trade_price = True
+            # 4. check prev_sell_price: avoid buy after selling
+            prev_sell_price, prev_sell_pos = self.calc_avg_trade_price(direction=Direction.SHORT,
+                                                                       timedelta=datetime.timedelta(minutes=30))
+            if prev_sell_pos > 0:
+                if price > 0.95 * self.prev_sell_price:
+                    ratio = ratio * 0.0
+            # 5. check prev_high_price: avoid buy after a high price
+            if self.prev_high_price and price > 0.95 * self.prev_high_price:
+                ratio = ratio * 0.0
+            # 6. check stop loss case
+            if price < 0.90 * self.buy_price:
+                ratio = ratio * 0.0
+            # 7. has trading quota
+            if not self.trading_quota:
+                ratio = ratio * 0.0
+            if ratio > 0:
+                exec_order = True
+        elif direction == Direction.SHORT:
+            pass
+        else:
+            pass
+        print(f'check_probability {direction.value} {volume}')
+        return exec_order, ratio
 
     def swing_trading(self, price: float):
         # 1. swing trading
         if random.uniform(0, 1) < self.buy_prob:
             direction = Direction.LONG
+            # 0. make decision
+            exec_buy, ratio = self.make_decision_swing_trading(price=price, direction=direction)
+            if not exec_buy:
+                return
             # 1. calc volume
-            volume = self.generate_volume(price=price, direction=direction)
+            volume = self.generate_volume(price=price, direction=direction,
+                                          check_balance=True, check_position=True, check_probability=True,
+                                          check_price_break=True, check_price=True, check_break_risk=True,
+                                          check_quota=True)
+            print(f'{direction.value} {price} {volume}')
             # 2. generate order
             self.generate_order(price=price, volume=volume, direction=direction)
         if random.uniform(0, 1) < self.sell_prob:
             direction = Direction.SHORT
-            # 1. calc volume
-            volume = self.generate_volume(price=price, direction=direction)
+            # 0. exec sell
+            exec_sell = self.make_decision_swing_trading(price=price, direction=direction)
+            if not exec_sell:
+                return
+
+                # 1. calc volume
+            volume = self.generate_volume(price=price, direction=direction,
+                                          check_balance=True, check_position=True, check_probability=True,
+                                          check_price_break=True, check_price=True, check_break_risk=True,
+                                          check_quota=True)
+            print(f'{direction.value} {price} {volume}')
             # 2. generate order
             self.generate_order(price=price, volume=volume, direction=direction)
+
+    def need_stop_loss(self, stop_loss_rate: float = 0.95, stop_loss_count: int = 3):
+        # check 1m kline to determine
+        bars = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=Interval.MINUTE)
+        is_stop_loss = False
+        if not self.prev_buy_price:
+            return is_stop_loss
+        stop_price = stop_loss_rate*self.prev_buy_price
+        bars_tmp = bars[-1*stop_loss_count:]
+        count = sum([int(b.high_price < stop_price) for b in bars_tmp])
+        if count >= stop_loss_count:
+            is_stop_loss = True
+        return is_stop_loss
 
     def stop_loss(self, price, stop_loss_rate: float = 0.95):
-        ratio = 1.0
-        if self.prev_buy_price:
-            if price < stop_loss_rate * self.prev_buy_price:
-                self.generate_order()
+        if self.prev_buy_price and price < stop_loss_rate * self.prev_buy_price:
+            # check 1m kline to determine
+            is_stop_loss = self.need_stop_loss(stop_loss_rate=stop_loss_rate)
+            if is_stop_loss:
+                self.write_log(f'stop_loss {datetime.datetime.now(tz=MY_TZ)}')
+                direction = Direction.SHORT
+                # if stop loss, do care position, prob, quota, price, break, risk
+                volume = self.generate_volume(price=price, direction=direction,
+                                              check_position=False,
+                                              check_probability=False,
+                                              check_price=False,
+                                              check_price_break=False,
+                                              check_quota=True,
+                                              check_break_risk=False)
+                self.generate_order(price=price, volume=volume, direction=direction)
+                self.send_order(direction=direction, price=price, volume=volume, offset=Offset.NONE)
 
-    def take_profit(self, price):
+    def take_profit(self, price: float, take_profit_ratio: float = 0.3):
+        if self.prev_buy_price and price > (1+take_profit_ratio)*self.prev_buy_price:
+            self.write_log(f'take_profit {datetime.datetime.now(tz=MY_TZ)}')
+            direction = Direction.SHORT
+            volume = self.generate_volume(price=price, direction=direction,
+                                          check_position=False,
+                                          check_probability=False,
+                                          check_price=False,
+                                          check_price_break=False,
+                                          check_quota=False,
+                                          check_break_risk=False)
+            self.generate_order(price=price, volume=volume, direction=direction)
+            self.send_order(direction=direction, price=price, volume=volume, offset=Offset.NONE)
+
+    def chase_up(self, price: float, price_buy_ratio: float = 1.02):
+        bars1m = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=Interval.MINUTE)
+        bars1m_data = bars1m[-360:]
+        low_price = np.array([bar.low_price for bar in bars1m_data])
+
+        # 1. reverse price array to find low minimal
+        if len(low_price) == 0:
+            return
+        peaks_low, _ = find_peaks(np.max(low_price) + 10 - low_price, distance=10, prominence=0.3, width=5)
+        if len(peaks_low) > 0:
+            bar_low = bars1m_data[peaks_low[-1]]
+            self.prev_low_price = bar_low.low_price
+        else:
+            self.prev_low_price = None
+            return
+        self.is_chase_up = False
+
+        # 1. check market crash
+        if price < price_buy_ratio*bar_low.low_price:
+            self.is_chase_up = True
+
+        # 2. check timestamp: 30min for buy low
+        if bar_low.datetime < datetime.datetime.now(tz=MY_TZ)-datetime.timedelta(minutes=30):
+            self.is_chase_up = False
+
+        # 3. check position
+        if self.is_chase_up:
+            '''start chasing up'''
+            # 1. price is in low position: check bars
+            cur_position = self.balance_info.data[self.base_currency].available*price
+            if cur_position < 0.2 * self.max_invest:
+                self.write_log(f'Chasing up {datetime.datetime.now(tz=MY_TZ)}')
+                direction = Direction.LONG
+                volume = self.generate_volume(price=price, direction=direction,
+                                              check_position=True,
+                                              check_probability=False,
+                                              check_price=False,
+                                              check_price_break=True,
+                                              check_quota=True,
+                                              check_break_risk=False)
+                self.generate_order(price=price, volume=volume, direction=direction)
+                self.send_order(direction=direction, price=price, volume=volume, offset=Offset.NONE)
+
+    def kill_down(self, price: float, price_sell_ratio: float = 0.95):
+        # bars15m = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=Interval.MINUTE_15)
+        bars1m = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=Interval.MINUTE)
+        bars1m_data = bars1m[-360:]
+        high_price = np.array([bar.high_price for bar in bars1m_data])
+        #low_price = np.array([bar.low_price for bar in bars1m_data])
+
+        if len(high_price) == 0:
+            #print('No high_price found!')
+            return
+        peaks_high, _ = find_peaks(high_price, distance=10, prominence=0.3, width=5)
+        # reverse price array to find low minimal
+        #peaks_low, _ = find_peaks(np.max(low_price) + 10 - low_price, distance=10, prominence=1, width=5)
+        if len(peaks_high) > 0:
+            bar_high = bars1m_data[peaks_high[-1]]
+            self.prev_high_price = bar_high.high_price
+            #print(bar_high)
+        else:
+            self.prev_high_price = None
+            #print('No peaks_high found!')
+            return
+
+        self.is_kill_down = False
+        # 1. check market crash
+        if price > price_sell_ratio * bar_high.close_price:
+            self.is_kill_down = True
+
+        # 2. check timestamp: 30min for buy low
+        if bar_high.datetime < datetime.datetime.now(tz=MY_TZ) - datetime.timedelta(minutes=30):
+            self.is_kill_down = False
+
+        # 3. check position
+        if self.is_kill_down:
+            '''start killing down'''
+            self.write_log(f'Killing down {datetime.datetime.now(tz=MY_TZ)}')
+            # 1. price is in low position: check bars
+            direction = Direction.SHORT
+            volume = self.generate_volume(price=price, direction=direction,
+                                          check_position=True,
+                                          check_probability=False,
+                                          check_price=False,
+                                          check_price_break=True,
+                                          check_quota=True,
+                                          check_break_risk=False)
+            self.generate_order(price=price, volume=volume, direction=direction)
+            self.send_order(direction=direction, price=price, volume=volume, offset=Offset.NONE)
+
+    def chase_rebound_buy(self, price: float, price_buy_ratio: float = 1.03):
         pass
 
-    def chase_up(self, price):
+    def chase_rebound_sell(self, price: float, price_sell_ratio: float = 1.05):
         pass
 
-    def kill_down(self, price):
-        pass
+    def chase_rebound(self, price: float, price_buy_ratio: float = 1.03, price_sell_ratio: float = 1.05):
+        bars1m = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=Interval.MINUTE)
+        bars1m_data = bars1m[-360:]
+        low_price = np.array([bar.low_price for bar in bars1m_data])
+
+        # 1. reverse price array to find low minimal
+        if len(low_price) == 0:
+            return
+        peaks_low, _ = find_peaks(np.max(low_price) + 10 - low_price, distance=10, prominence=0.3, width=5)
+        if len(peaks_low) > 0:
+            bar_low = bars1m_data[peaks_low[-1]]
+            self.prev_low_price = bar_low.low_price
+        else:
+            self.prev_low_price = None
+            return
+
+        self.is_rebound = False
+
+        # 1. check market crash: if price rebound
+        if price < price_buy_ratio*bar_low.low_price:
+            self.is_rebound = True
+
+        # 2. check timestamp: 30min for buy low
+        if bar_low.datetime < datetime.datetime.now(tz=MY_TZ)-datetime.timedelta(minutes=15):
+            self.is_rebound = False
+
+        if self.is_rebound:
+            '''start chase rebound'''
+            # 3. check current position
+            cur_position = self.balance_info.data[self.base_currency].available*price
+            if cur_position < 0.2 * self.max_invest:
+                self.write_log(f'Chasing up {datetime.datetime.now(tz=MY_TZ)}')
+                direction = Direction.LONG
+                volume = self.generate_volume(price=price, direction=direction,
+                                              check_position=True,
+                                              check_probability=False,
+                                              check_price=False,
+                                              check_price_break=False,
+                                              check_quota=False,
+                                              check_break_risk=False)
+                self.generate_order(price=price, volume=volume, direction=direction)
+                self.send_order(direction=direction, price=price, volume=volume, offset=Offset.NONE)
 
     def make_decision(self, price: float):
-        '''
-        1. check balance, position, price
-        2. historical trade, previous high, low
-        3. profit
-        4. price break
-        '''
+        ''''''
         # 1. swing trading
         self.swing_trading(price=price)
+
         # 2. chasing up
+        if False:
+            self.chase_up(price=price)
 
         # 3. killing down
-        if random.uniform(0, 1) < self.buy_prob:
-            direction = Direction.LONG
-            # 1. calc volume
-            volume = self.generate_volume(price=price, direction=direction)
-            # 2. price break
-            #self.check_price_break(price=price, direction=direction)
-            #print('In buy:', volume, self.lower_break, self.trading_quota)
-            #if not self.lower_break and self.trading_quota:
-                # 3. send multiple orders
-            self.generate_order(price=price, volume=volume, direction=direction)
-            #print('Sending buy order:', price)
-        if random.uniform(0, 1) < self.sell_prob:
-            direction = Direction.SHORT
-            # 1. calc volume
-            volume = self.generate_volume(price=price, direction=direction)
-            # 2. price break
-            #self.check_price_break(price=price, direction=direction)
-            #print('In sell:', volume)
-            # if no upper breaking
-            self.generate_order(price=price, volume=volume, direction=direction)
+        if False:
+            self.kill_down(price=price)
+
+        # 4. stop loss
+        if True:
+            self.stop_loss(price=price)
+
+        # 5. take profit
+        if True:
+            self.take_profit(price=price)
+
+        # if random.uniform(0, 1) < self.buy_prob:
+        #     direction = Direction.LONG
+        #     # 1. calc volume
+        #     volume = self.generate_volume(price=price, direction=direction)
+        #     # 2. price break
+        #     #self.check_price_break(price=price, direction=direction)
+        #     #print('In buy:', volume, self.lower_break, self.trading_quota)
+        #     #if not self.lower_break and self.trading_quota:
+        #         # 3. send multiple orders
+        #     self.generate_order(price=price, volume=volume, direction=direction)
+        #     #print('Sending buy order:', price)
+        # if random.uniform(0, 1) < self.sell_prob:
+        #     direction = Direction.SHORT
+        #     # 1. calc volume
+        #     volume = self.generate_volume(price=price, direction=direction)
+        #     # 2. price break
+        #     #self.check_price_break(price=price, direction=direction)
+        #     #print('In sell:', volume)
+        #     # if no upper breaking
+        #     self.generate_order(price=price, volume=volume, direction=direction)
             # if not self.upper_break:
             #     # 3. send multiple orders
             #     self.generate_order(price=price, volume=volume, direction=direction)
@@ -789,12 +1025,24 @@ class GridVline(CtaTemplate):
         if pos > max_pos:
             self.min_invest = 0
         '''
-        vol = vol_list[3]
-        pos = self.vqg[self.vt_symbol].vq[vol].less_vol(price=price)
+        #vol = vol_list[self.vol_select]
+        pos = self.vqg[self.vt_symbol].vq[self.vol_select].less_vol(price=price)
         pos_floor = np.floor(pos*10)/10
         self.max_invest = np.round((1.0 - pos_floor) * self.total_invest)
         self.min_invest = 0.2*self.total_invest
         #print(f'MaxInv:{self.max_invest} MinInv:{self.min_invest}')
+
+    def calc_avg_trade_price(self, direction: Direction, timedelta: datetime.timedelta(minutes=60)):
+        pos = 0
+        price = 0
+        for i, at in enumerate(reversed(self.account_trades)):
+            if at.datetime > datetime.datetime.now(tz=MY_TZ) - timedelta:
+                if at.direction == direction:
+                    price += at.price * at.volume
+                    pos += at.volume
+        if pos > 0.0001:
+            price = price / pos
+        return price, pos
 
     def update_avg_trade_price(self):
         long_price = 0
@@ -925,3 +1173,6 @@ class GridVline(CtaTemplate):
         self.update_variable()
         self.put_event()
 
+
+if __name__ == '__main__':
+    pass
