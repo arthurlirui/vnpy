@@ -65,7 +65,7 @@ class GridVline(CtaTemplate):
                  'buy_prob', 'sell_prob', 'min_invest', 'max_invest', 'total_invest',
                  'buy_price', 'sell_price', 'vol_select',
                  'prev_buy_price', 'prev_sell_price', 'trade_speed', 'trade_gain',
-                 'is_kill_down', 'prev_high_price', 'is_chase_up', 'prev_low_price', 'trading_quota']
+                 'prev_high_price', 'prev_low_price', 'trading_quota']
 
     #usdt_vol_list = [10, 40, 160, 640, 2560, 10240, 40960]
     bch3l_vol_list = [1000, 10000, 100000, 1000000]
@@ -635,8 +635,10 @@ class GridVline(CtaTemplate):
         if direction == Direction.LONG:
             if self.prev_high_price and self.prev_high_time and datetime_now > self.prev_high_time + timedelta:
                 ratio_high = min(max((0.96-price/self.prev_high_price)*100*ratio_base, 0), 4)
+                ratio_high = float(np.round(ratio_high, 4))
             if self.prev_low_price:
                 ratio_low = min(max((1.01-price/self.prev_low_price)*100*ratio_base, 0), 4)
+                ratio_low = float(np.round(ratio_low, 4))
             ratio = max(ratio_low, ratio_high)
 
         if direction == Direction.SHORT:
@@ -754,10 +756,10 @@ class GridVline(CtaTemplate):
         # 6. has trading quota
         if not self.trading_quota:
             ratio_quota = 0.0
-        ratio = ratio_prob*ratio_break*ratio_fall_down*ratio_slow_suck*ratio_high_price*ratio_quota
+        ratio = ratio_prob*ratio_break*ratio_fall_down*ratio_quota
 
         if is_low_position:
-            if ratio_slow_suck > 0.8 and ratio_high_price > 0.1:
+            if ratio_slow_suck > 0.8 or ratio_high_price > 0.1:
                 ratio = max(ratio_slow_suck, ratio_high_price)
                 #exec_order = True
         if ratio > 0:
@@ -1096,8 +1098,10 @@ class GridVline(CtaTemplate):
     def update_trade_prob(self, price: float):
         # 1. choose proper vline to calculate ref price
         # 2. update buy or sell probility
-        self.buy_prob = self.calc_pro_buy(price=price, price_ref=self.buy_price, theta=self.theta, global_prob=self.global_prob)
-        self.sell_prob = self.calc_pro_sell(price=price, price_ref=self.sell_price, theta=self.theta, global_prob=self.global_prob)
+        if self.buy_price:
+            self.buy_prob = self.calc_pro_buy(price=price, price_ref=self.buy_price, theta=self.theta, global_prob=self.global_prob)
+        if self.sell_price:
+            self.sell_prob = self.calc_pro_sell(price=price, price_ref=self.sell_price, theta=self.theta, global_prob=self.global_prob)
 
     def update_position_budget(self, price: float):
         # check current position
@@ -1308,16 +1312,27 @@ class GridVline(CtaTemplate):
             self.tick_buf = []
 
     def update_variable(self):
-        self.timer_count = int(self.timer_count)
-        self.upper_break_count = int(self.upper_break_count)
-        self.lower_break_count = int(self.lower_break_count)
-        self.buy_prob = float(self.buy_prob)
-        self.sell_prob = float(self.sell_prob)
-        self.min_invest = float(self.min_invest)
-        self.max_invest = float(self.max_invest)
-        self.buy_price = float(self.buy_price)
-        self.sell_price = float(self.sell_price)
-        self.total_invest = float(self.total_invest)
+        if self.timer_count > 10:
+            self.timer_count = int(self.timer_count)
+            self.upper_break_count = int(self.upper_break_count)
+            self.lower_break_count = int(self.lower_break_count)
+            self.buy_prob = float(self.buy_prob)
+            self.sell_prob = float(self.sell_prob)
+            self.min_invest = float(self.min_invest)
+            self.max_invest = float(self.max_invest)
+            self.total_invest = float(self.total_invest)
+            if self.buy_price:
+                self.buy_price = float(self.buy_price)
+            if self.sell_price:
+                self.sell_price = float(self.sell_price)
+            if self.prev_buy_price:
+                self.prev_buy_price = float(self.prev_buy_price)
+            if self.prev_sell_price:
+                self.prev_sell_price = float(self.prev_sell_price)
+            if self.prev_high_price:
+                self.prev_high_price = float(self.prev_high_price)
+            if self.prev_low_price:
+                self.prev_low_price = float(self.prev_low_price)
 
     def on_timer(self):
         '''
@@ -1325,11 +1340,9 @@ class GridVline(CtaTemplate):
         '''
         if not self.is_data_inited:
             return
-        if self.timer_count > 10:
-            return
+
         self.update_market_trade(time_step=1)
         self.update_price_gain_speed_vline(num_vline=3, time_step=1)
-
         self.check_trading_quota(time_step=10)
 
         #if self.timer_count % 1 == 0 and self.timer_count > 10:
@@ -1337,13 +1350,14 @@ class GridVline(CtaTemplate):
         #    self.update_price_gain_speed_vline(num_vline=3)
 
         if self.timer_count % 10 == 0 and self.timer_count > 10:
+
             if self.last_trade:
-                price = self.last_trade.price
-                self.check_price_break(price=price, direction=Direction.LONG)
-                self.check_price_break(price=price, direction=Direction.SHORT)
                 self.update_ref_price()
                 self.update_high_low_price()
                 self.update_avg_trade_price()
+                price = self.last_trade.price
+                self.check_price_break(price=price, direction=Direction.LONG)
+                self.check_price_break(price=price, direction=Direction.SHORT)
                 self.make_decision(price=price)
 
         if self.timer_count % 60 == 0 and self.timer_count > 10:
