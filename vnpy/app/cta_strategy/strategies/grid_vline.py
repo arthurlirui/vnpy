@@ -169,11 +169,16 @@ class GridVline(CtaTemplate):
 
         # previous buy or sell price
         self.prev_buy_price = None
+        self.prev_buy_time = None
         self.prev_sell_price = None
+        self.prev_sell_time = None
 
         # previous high and low peaks
         self.prev_high_price = None
+        self.prev_high_time = None
         self.prev_low_price = None
+        self.prev_low_time = None
+
         self.is_chase_up = False
         self.is_kill_down = False
 
@@ -513,19 +518,22 @@ class GridVline(CtaTemplate):
     def on_balance(self, balance_data: BalanceData):
         print('OnBalance:', balance_data)
 
-    def generate_volume(self, price: float, direction: Direction,
+    def generate_volume(self, price: float, direction: Direction, ratio: float = 1.0,
                         check_balance=True, check_position=True) -> float:
         volume = 0.0
         if direction == Direction.LONG:
             # 1. check balance
             volume = random.uniform(0, 1) * self.trade_amount / price
+            volume = volume * ratio
             if check_balance:
-                avail_volume = self.balance_info.data[self.quote_currency].available
+                #avail_volume = self.balance_info.data[self.quote_currency].available
+                avail_volume = self.get_current_position(quote=True, available=True)
                 volume = np.round(np.min([volume, avail_volume / price]), 4)
                 print(f'check_balance {direction.value} {volume}')
             # 2. check position
             if check_position:
-                cur_position = self.balance_info.data[self.base_currency].available*price
+                #cur_position = self.balance_info.data[self.base_currency].available*price
+                cur_position = self.get_current_position(base=True, available=True)*price
                 if cur_position > self.max_invest:
                     volume = np.round(volume * 0.0, 4)
                     print(f'check_position {direction.value} {volume}')
@@ -533,14 +541,17 @@ class GridVline(CtaTemplate):
             # 1. check balance
             if check_balance:
                 volume = np.round(random.uniform(0, 1) * self.trade_amount / price, 2)
-                avail_volume = self.balance_info.data[self.base_currency].available
+                volume = volume * ratio
+                #avail_volume = self.balance_info.data[self.base_currency].available
+                avail_volume = self.get_current_position(base=True, available=True)
                 volume = np.round(np.min([volume, avail_volume]), 4)
                 print(f'check_balance {direction.value} {volume}')
             # 2. check position
             if check_position:
-                cur_position = self.balance_info.data[self.base_currency].available*price
+                #cur_position = self.balance_info.data[self.base_currency].available*price
+                cur_position = self.get_current_position(base=True, available=True)*price
                 if cur_position < self.min_invest:
-                    volume = np.round(volume * 1.0, 4)
+                    volume = np.round(volume * 0.5, 4)
                 print(f'check_position {direction.value} {volume}')
         else:
             volume = 0.0
@@ -614,6 +625,66 @@ class GridVline(CtaTemplate):
         else:
             self.check_price_break_kline(price=price, direction=direction, num_kline=num_kline)
 
+    def check_prev_high_low_price(self, price: float, direction: Direction,
+                                  timedelta: datetime.timedelta = datetime.timedelta(minutes=30)):
+        ratio_base = 0.2
+        ratio_high = 0.0
+        ratio_low = 0.0
+        ratio = 1.0
+        datetime_now = datetime.datetime.now(tz=MY_TZ)
+        if direction == Direction.LONG:
+            if self.prev_high_price and self.prev_high_time and datetime_now > self.prev_high_time + timedelta:
+                ratio_high = min(max((0.96-price/self.prev_high_price)*100*ratio_base, 0), 4)
+            if self.prev_low_price:
+                ratio_low = min(max((1.01-price/self.prev_low_price)*100*ratio_base, 0), 4)
+            ratio = max(ratio_low, ratio_high)
+
+        if direction == Direction.SHORT:
+            if self.prev_low_price and self.prev_low_time and datetime_now > self.prev_low_time + timedelta:
+                ratio_low = min(max((price/self.prev_low_price-1.04)*100*ratio_base, 0), 4)
+            if self.prev_high_price:
+                ratio_high = min(max((price/self.prev_high_price-0.99)*100*ratio_base, 0), 4)
+            ratio = max(ratio_high, ratio_low)
+        return ratio
+
+    def check_prev_buy_sell_price(self, price: float, direction: Direction,
+                                  timedelta: datetime.timedelta = datetime.timedelta(minutes=10)):
+        ratio = 1.0
+        datetime_now = datetime.datetime.now(tz=MY_TZ)
+        ratio_buy = 0.0
+        ratio_sell = 0.0
+        if direction == Direction.LONG:
+            if self.prev_buy_price and self.prev_buy_time and datetime_now < self.prev_buy_time + timedelta:
+                if 0.995 * self.prev_buy_price < price < 0.999 * self.prev_buy_price:
+                    ratio_buy = 0.5
+                elif 0.98 * self.prev_buy_price < price < 0.995 * self.prev_buy_price:
+                    ratio_buy = 1.0
+                elif 0.95 * self.prev_buy_price < price < 0.98 * self.prev_buy_price:
+                    ratio_buy = 1.5
+                else:
+                    ratio_buy = 0.0
+            if self.prev_buy_time and datetime_now > self.prev_buy_time + timedelta:
+                ratio_buy = 0.4
+            ratio = ratio_buy
+        if direction == Direction.SHORT:
+            if self.prev_sell_price and self.prev_sell_time and datetime_now < self.prev_sell_time + timedelta:
+                if 0.995 * self.prev_sell_price < price < 0.999 * self.prev_sell_price:
+                    ratio_sell = 0.5
+                elif 0.98 * self.prev_sell_price < price < 0.995 * self.prev_sell_price:
+                    ratio_sell = 1.0
+                elif 0.95 * self.prev_sell_price < price < 0.98 * self.prev_sell_price:
+                    ratio_sell = 1.5
+                else:
+                    ratio_sell = 0.0
+            if self.prev_sell_time and datetime_now > self.prev_sell_time + timedelta:
+                ratio_sell = 0.4
+            ratio = ratio_sell
+        return ratio
+
+    def check_trading_quota(self, time_step: int = 10):
+        if self.timer_count % time_step == 0:
+            self.trading_quota = True
+
     def generate_order(self, price: float, volume: float, direction: Direction, w: float = 1.0):
         volume1 = float(np.round(volume * w, 2))
         if direction == Direction.LONG:
@@ -641,35 +712,54 @@ class GridVline(CtaTemplate):
         ratio_fall_down = 1.0
         ratio_high_price = 1.0
         ratio_quota = 1.0
+
+        is_low_position = False
+        cur_position = self.balance_info.data[self.base_currency].available * price
+        if cur_position < 0.4 * self.max_invest:
+            is_low_position = True
+
         # 1. check probability
         if self.sell_prob > self.buy_prob or self.sell_prob > 0.03:
             ratio_prob = 0.0
         # 2. lower price break
         if self.lower_break:
             ratio_break = 0.0
-        # 3. check prev_buy_price
-        if self.prev_buy_price:
-            if price < 0.995 * self.prev_buy_price:
-                ratio_slow_suck = 0.5
-            elif 0.98 * self.prev_buy_price < price < 0.995 * self.prev_buy_price:
-                ratio_slow_suck = 0.75
-            elif 0.95 * self.prev_buy_price < price < 0.98 * self.prev_buy_price:
-                ratio_slow_suck = 1.0
-            else:
-                # stop loss here
-                ratio_slow_suck = 0.0
+        # 3. lower than previous buy price
+        ratio_slow_suck = self.check_prev_buy_sell_price(price=price, direction=Direction.LONG, timedelta=datetime.timedelta(minutes=10))
+        # if self.prev_buy_price:
+        #     if price < 0.995 * self.prev_buy_price:
+        #         ratio_slow_suck = 0.5
+        #     elif 0.98 * self.prev_buy_price < price < 0.995 * self.prev_buy_price:
+        #         ratio_slow_suck = 0.75
+        #     elif 0.95 * self.prev_buy_price < price < 0.98 * self.prev_buy_price:
+        #         ratio_slow_suck = 1.0
+        #     else:
+        #         # stop loss here
+        #         ratio_slow_suck = 0.0
         # 4. check prev_sell_price: avoid buy after selling
-        prev_sell_price, prev_sell_pos = self.calc_avg_trade_price(direction=Direction.SHORT,
-                                                                   timedelta=datetime.timedelta(minutes=180))
+        prev_sell_price, prev_sell_pos, prev_sell_time = self.calc_avg_trade_price(direction=Direction.SHORT, timedelta=datetime.timedelta(minutes=180))
         if prev_sell_pos > 0 and price > 0.98 * prev_sell_price:
             ratio_fall_down = 0.0
-        # 5. check prev_high_price: avoid buy after a high price
-        #if self.prev_high_price and price > 0.95 * self.prev_high_price:
-        #    ratio_high_price = 0.0
+        # 5. lower than previous high price
+        ratio_high_price = self.check_prev_high_low_price(price=price, direction=Direction.LONG, timedelta=datetime.timedelta(minutes=30))
+        # if self.prev_high_price:
+        #     if 0.95 * self.prev_high_price < price < 0.97 * self.prev_high_price:
+        #         ratio_high_price = 0.5
+        #     elif 0.90 * self.prev_high_price < price < 0.95 * self.prev_high_price:
+        #         ratio_high_price = 1.0
+        #     elif price > 0.97 * self.prev_high_price:
+        #         ratio_high_price = 0.0
+        #     else:
+        #         pass
         # 6. has trading quota
         if not self.trading_quota:
             ratio_quota = 0.0
         ratio = ratio_prob*ratio_break*ratio_fall_down*ratio_slow_suck*ratio_high_price*ratio_quota
+
+        if is_low_position:
+            if ratio_slow_suck > 0.8 and ratio_high_price > 0.1:
+                ratio = max(ratio_slow_suck, ratio_high_price)
+                #exec_order = True
         if ratio > 0:
             exec_order = True
         if debug_print:
@@ -684,46 +774,69 @@ class GridVline(CtaTemplate):
         ratio_fall_down = 1.0
         ratio_high_price = 1.0
         ratio_quota = 1.0
+
+        is_high_position = False
+        cur_position = self.balance_info.data[self.base_currency].available * price
+        if cur_position > 0.6 * self.max_invest:
+            is_high_position = True
+
+        is_low_position = False
+        if cur_position < 0.4 * self.max_invest:
+            is_low_position = True
+
         # 1. check probability
         if self.buy_prob > self.sell_prob or self.buy_prob > 0.03:
             ratio_prob = 0.0
         # 2. upper price break
         if self.upper_break:
             ratio_break = 0.0
-        # 3. check prev_sell_price, prev_sell_pos
-        prev_sell_price, prev_sell_pos = self.calc_avg_trade_price(direction=Direction.SHORT,
-                                                                   vol=10,
-                                                                   timedelta=datetime.timedelta(minutes=180))
+        # 3. check prev_sell_price, prev_sell_pos, prev_sell_time
+        prev_sell_price, prev_sell_pos, prev_sell_time = self.calc_avg_trade_price(direction=Direction.SHORT, vol=10,
+                                                                                   timedelta=datetime.timedelta(minutes=180))
         if prev_sell_pos > 0:
             if price >= 1.01 * prev_sell_price:
                 ratio_fast_sell = 1.0
             elif 1.00 * prev_sell_price < price < 1.01 * prev_sell_price:
                 ratio_fast_sell = 0.5
             else:
-                # stop loss here
                 ratio_fast_sell = 0.0
-        # 4. price surges to highest and fall back
-        #bars = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=Interval.MINUTE)
+        # 4. check high price
+        ratio_high_price = self.check_prev_high_low_price(price=price, direction=Direction.SHORT,
+                                                          timedelta=datetime.timedelta(minutes=10))
 
-        # 5. take profit
+        # 5. check previous sell price
+        ratio_sell_price = self.check_prev_buy_sell_price(price=price, direction=Direction.SHORT,
+                                                          timedelta=datetime.timedelta(minutes=30))
+        # 6. take profit
         avail_volume = self.balance_info.data[self.base_currency].available
-        prev_buy_price, prev_buy_pos = self.calc_avg_trade_price(direction=Direction.LONG,
-                                                                 vol=avail_volume,
-                                                                 timedelta=datetime.timedelta(minutes=180))
+        prev_buy_price, prev_buy_pos, prev_buy_time = self.calc_avg_trade_price(direction=Direction.LONG, vol=avail_volume, timedelta=datetime.timedelta(minutes=180))
 
-        if prev_buy_price > 0.1*price and price > 1.05 * prev_buy_price:
-            ratio_take_profit = 1.0
+        if prev_buy_price > 0.1 * price:
+            if price > 1.05 * prev_buy_price:
+                ratio_take_profit = 0.5
+            if price > 1.06 * prev_buy_price:
+                ratio_take_profit = 0.6
+            if price > 1.07 * prev_buy_price:
+                ratio_take_profit = 0.7
+            if price > 1.08 * prev_buy_price:
+                ratio_take_profit = 0.8
+            if price > 1.10 * prev_buy_price:
+                ratio_take_profit = 1.0
         else:
             ratio_take_profit = 0.0
 
-        # 5.1 hold position time
-
-        # 6. has trading quota
+        # 7. has trading quota
         if not self.trading_quota:
             ratio_quota = 0.0
         ratio = ratio_prob * ratio_break * ratio_fast_sell * ratio_quota
-        if ratio_take_profit > 0:
+        if is_high_position and ratio_take_profit > 0.0:
             ratio = ratio_take_profit
+
+        if is_low_position and ratio_take_profit > 0.6:
+            ratio = ratio_take_profit
+
+        if ratio_high_price > 0.5 or ratio_sell_price > 0.5:
+            ratio = max(ratio_high_price, ratio_sell_price)
         if ratio > 0:
             exec_order = True
         if debug_print:
@@ -751,8 +864,8 @@ class GridVline(CtaTemplate):
             if not exec_buy:
                 return
             # 1. calc volume
-            volume = self.generate_volume(price=price, direction=direction, check_balance=True, check_position=True)
-            volume = volume * ratio
+            volume = self.generate_volume(price=price, direction=direction, ratio=ratio,
+                                          check_balance=True, check_position=True)
             print(f'{direction.value} {price} {volume}')
             # 2. generate order
             self.generate_order(price=price, volume=volume, direction=direction)
@@ -763,8 +876,8 @@ class GridVline(CtaTemplate):
             if not exec_sell:
                 return
             # 1. calc volume
-            volume = self.generate_volume(price=price, direction=direction, check_balance=True, check_position=True)
-            volume = volume * ratio
+            volume = self.generate_volume(price=price, direction=direction, ratio=ratio,
+                                          check_balance=True, check_position=True)
             print(f'{direction.value} {price} {volume}')
             # 2. generate order
             self.generate_order(price=price, volume=volume, direction=direction)
@@ -939,41 +1052,33 @@ class GridVline(CtaTemplate):
             self.kill_down(price=price)
 
         # 4. stop loss
-        if True:
+        if False:
             self.stop_loss(price=price)
 
         # 5. take profit
         if True:
             self.take_profit(price=price)
 
-        # if random.uniform(0, 1) < self.buy_prob:
-        #     direction = Direction.LONG
-        #     # 1. calc volume
-        #     volume = self.generate_volume(price=price, direction=direction)
-        #     # 2. price break
-        #     #self.check_price_break(price=price, direction=direction)
-        #     #print('In buy:', volume, self.lower_break, self.trading_quota)
-        #     #if not self.lower_break and self.trading_quota:
-        #         # 3. send multiple orders
-        #     self.generate_order(price=price, volume=volume, direction=direction)
-        #     #print('Sending buy order:', price)
-        # if random.uniform(0, 1) < self.sell_prob:
-        #     direction = Direction.SHORT
-        #     # 1. calc volume
-        #     volume = self.generate_volume(price=price, direction=direction)
-        #     # 2. price break
-        #     #self.check_price_break(price=price, direction=direction)
-        #     #print('In sell:', volume)
-        #     # if no upper breaking
-        #     self.generate_order(price=price, volume=volume, direction=direction)
-            # if not self.upper_break:
-            #     # 3. send multiple orders
-            #     self.generate_order(price=price, volume=volume, direction=direction)
-            # else:
-            #     # or if has profit
-            #     if self.prev_buy_price and price > 1.10 * self.prev_buy_price:
-            #         print('Has a good price:', price)
-            #         self.generate_order(price=price, volume=volume, direction=direction)
+    def update_high_low_price(self):
+        bars1m = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=Interval.MINUTE)
+        bars1m_data = bars1m[-360:]
+        low_price = np.array([bar.low_price for bar in bars1m_data])
+        high_price = np.array([bar.high_price for bar in bars1m_data])
+
+        # 1. reverse price array to find low minimal
+        if len(low_price) > 0:
+            peaks_low, _ = find_peaks(np.max(low_price) + 10 - low_price, distance=10, prominence=0.3, width=5)
+            if len(peaks_low) > 0:
+                self.prev_low_price = bars1m_data[peaks_low[-1]].low_price
+            else:
+                self.prev_low_price = None
+
+        if len(high_price) > 0:
+            peaks_high, _ = find_peaks(high_price, distance=10, prominence=0.3, width=5)
+            if len(peaks_high) > 0:
+                self.prev_high_price = bars1m_data[peaks_high[-1]].high_price
+            else:
+                self.prev_high_price = None
 
     def update_ref_price(self):
         '''update reference price for buy and sell'''
@@ -982,11 +1087,11 @@ class GridVline(CtaTemplate):
         kl360 = kline_1m[-360:]
         avg_vol = float(sum([kl.amount for kl in kl360]) / len(kl360))
         vol_list = self.market_params[self.symbol]['vline_vol_list']
-        vol = min([vol for vol in vol_list if avg_vol*60 < vol])
+        vol = min([vol for vol in vol_list if avg_vol*20 < vol])
 
         self.vol_select = vol
-        self.buy_price = float(np.round(self.vqg[self.vt_symbol].vq[vol].top_k_price(k=0.10), 4))
-        self.sell_price = float(np.round(self.vqg[self.vt_symbol].vq[vol].top_k_price(k=0.90), 4))
+        self.buy_price = float(np.round(self.vqg[self.vt_symbol].vq[vol].top_k_price(k=0.05), 4))
+        self.sell_price = float(np.round(self.vqg[self.vt_symbol].vq[vol].top_k_price(k=0.95), 4))
 
     def update_trade_prob(self, price: float):
         # 1. choose proper vline to calculate ref price
@@ -996,7 +1101,8 @@ class GridVline(CtaTemplate):
 
     def update_position_budget(self, price: float):
         # check current position
-        cur_position = self.balance_info.data[self.base_currency].available * price
+        #cur_position = self.balance_info.data[self.base_currency].available * price
+        cur_position = self.get_current_position(base=True, available=True)*price
         if cur_position > 0.9*self.max_invest:
             self.max_invest = min(self.total_invest, cur_position+0.1*self.total_invest)
 
@@ -1015,7 +1121,8 @@ class GridVline(CtaTemplate):
         self.max_invest = base_invest + self.min_invest
 
         # update budget from current position
-        cur_position = self.balance_info.data[self.base_currency].available * price
+        #cur_position = self.balance_info.data[self.base_currency].available * price
+        cur_position = self.get_current_position(base=True, available=True)*price
         if cur_position > 0.9 * self.max_invest:
             self.max_invest = min(self.total_invest, self.max_invest + 0.1 * self.total_invest)
         self.max_invest = np.round(self.max_invest, 4)
@@ -1047,38 +1154,45 @@ class GridVline(CtaTemplate):
                              timedelta: datetime.timedelta = datetime.timedelta(minutes=60)):
         pos = 0
         price = 0
+        datetime_now = datetime.datetime.now(tz=MY_TZ)
+        datetime_last = None
         if vol:
             for i, at in enumerate(reversed(self.account_trades)):
-                if at.datetime > datetime.datetime.now(tz=MY_TZ) - timedelta:
+                if at.datetime > datetime_now - timedelta:
                     if at.direction == direction:
                         price += at.price * at.volume
                         pos += at.volume
+                        datetime_last = at.datetime
                         if pos > vol:
                             break
         else:
             for i, at in enumerate(reversed(self.account_trades)):
-                if at.datetime > datetime.datetime.now(tz=MY_TZ) - timedelta:
+                if at.datetime > datetime_now - timedelta:
                     if at.direction == direction:
                         price += at.price * at.volume
                         pos += at.volume
+                        datetime_last = at.datetime
         if pos > 0.0001:
             price = price / pos
-        return price, pos
+        return price, pos, datetime_last
 
     def update_avg_trade_price(self, timedelta: datetime.timedelta = datetime.timedelta(hours=6)):
         cur_position = self.balance_info.data[self.base_currency].available
-        long_price, long_pos = self.calc_avg_trade_price(direction=Direction.LONG, vol=cur_position, timedelta=timedelta)
-        short_price, short_pos = self.calc_avg_trade_price(direction=Direction.SHORT, vol=10, timedelta=timedelta)
+        long_price, long_pos, long_datetime = self.calc_avg_trade_price(direction=Direction.LONG, vol=cur_position, timedelta=timedelta)
+        short_price, short_pos, short_datetime = self.calc_avg_trade_price(direction=Direction.SHORT, vol=10, timedelta=timedelta)
 
         if long_pos > 0.0001:
             self.prev_buy_price = float(np.round(long_price, 4))
+            self.prev_buy_time = long_datetime
         else:
             self.prev_buy_price = None
+            self.prev_buy_time = None
         if short_pos > 0.0001:
             self.prev_sell_price = float(np.round(short_price, 4))
+            self.prev_sell_time = short_datetime
         else:
             self.prev_sell_price = None
-
+            self.prev_sell_time = None
 
     def update_break_count(self):
         if self.upper_break_count > 0:
@@ -1098,7 +1212,7 @@ class GridVline(CtaTemplate):
     def update_price_gain_speed_kline(self):
         pass
 
-    def update_price_gain_speed_vline(self, num_vline: int = 3):
+    def update_price_gain_speed_vline(self, num_vline: int = 3, time_step: int = 1):
         self.trade_gain, self.trade_speed = self.calc_price_gain_speed(num_vline=num_vline)
         self.trade_gain = np.round(self.trade_gain, 4)
         self.trade_speed = np.round(self.trade_speed, 4)
@@ -1144,6 +1258,20 @@ class GridVline(CtaTemplate):
     def check_hover(self):
         return False
 
+    def get_current_position(self, base=False, quote=False, available=False, volume=False):
+        pos = None
+        if base:
+            if available:
+                pos = self.balance_info.data[self.base_currency].available
+            elif volume:
+                pos = self.balance_info.data[self.base_currency].volume
+        if quote:
+            if available:
+                pos = self.balance_info.data[self.quote_currency].available
+            elif volume:
+                pos = self.balance_info.data[self.quote_currency].volume
+        return pos
+
     def update_market_status(self):
         '''check market status'''
         kline_1m = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=Interval.MINUTE)
@@ -1151,8 +1279,8 @@ class GridVline(CtaTemplate):
             return
         # check bull market
         self.check_gain_slip(count=3)
-        self.is_climb = self.check_climb()
-        self.is_surge = self.check_surge()
+        #self.is_climb = self.check_climb()
+        #self.is_surge = self.check_surge()
 
         # check bear market
         self.is_slip = self.check_slip()
@@ -1162,8 +1290,10 @@ class GridVline(CtaTemplate):
         # check hover market
         self.is_hover = self.check_hover()
 
-    def update_market_trade(self):
-        if self.is_data_inited:
+    def update_market_trade(self, time_step: int = 1):
+        if not self.is_data_inited:
+            return
+        if self.timer_count % time_step == 0:
             for t in self.trade_buf:
                 self.vqg[t.vt_symbol].update_market_trades(trade=t)
 
@@ -1177,21 +1307,7 @@ class GridVline(CtaTemplate):
             self.kline_buf = []
             self.tick_buf = []
 
-            # debug_print = False
-            # if debug_print:
-            #     for vqi in self.vqg[self.vt_symbol].vq:
-            #         print(self.vqg[self.vt_symbol].vq[vqi])
-            #
-            #     for vi in self.vg[self.vt_symbol].vlines:
-            #         vl = self.vg[self.vt_symbol].vlines[vi]
-            #         if len(vl) > 0:
-            #             print(len(vl), vl[0], vl[-1])
-
     def update_variable(self):
-        # variables = ['timer_count', 'upper_break', 'lower_break', 'upper_break_count', 'lower_break_count', 'buy_prob',
-        #              'sell_prob', 'min_invest', 'max_invest', 'total_invest',
-        #              'buy_price0', 'sell_price0', 'buy_price1', 'sell_price1', 'buy_price2', 'sell_price2',
-        #              'buy_price3', 'sell_price3', 'buy_price4', 'sell_price4']
         self.timer_count = int(self.timer_count)
         self.upper_break_count = int(self.upper_break_count)
         self.lower_break_count = int(self.lower_break_count)
@@ -1199,13 +1315,9 @@ class GridVline(CtaTemplate):
         self.sell_prob = float(self.sell_prob)
         self.min_invest = float(self.min_invest)
         self.max_invest = float(self.max_invest)
+        self.buy_price = float(self.buy_price)
+        self.sell_price = float(self.sell_price)
         self.total_invest = float(self.total_invest)
-
-        #self.buy_price0, self.sell_price0 = float(self.buy_price[0]), float(self.sell_price[0])
-        #self.buy_price1, self.sell_price1 = float(self.buy_price[1]), float(self.sell_price[1])
-        #self.buy_price2, self.sell_price2 = float(self.buy_price[2]), float(self.sell_price[2])
-        #self.buy_price3, self.sell_price3 = float(self.buy_price[3]), float(self.sell_price[3])
-        #self.buy_price4, self.sell_price4 = float(self.buy_price[4]), float(self.sell_price[4])
 
     def on_timer(self):
         '''
@@ -1213,9 +1325,16 @@ class GridVline(CtaTemplate):
         '''
         if not self.is_data_inited:
             return
-        if self.timer_count % 1 == 0 and self.timer_count > 10:
-            self.update_market_trade()
-            self.update_price_gain_speed_vline(num_vline=3)
+        if self.timer_count > 10:
+            return
+        self.update_market_trade(time_step=1)
+        self.update_price_gain_speed_vline(num_vline=3, time_step=1)
+
+        self.check_trading_quota(time_step=10)
+
+        #if self.timer_count % 1 == 0 and self.timer_count > 10:
+        #    self.update_market_trade()
+        #    self.update_price_gain_speed_vline(num_vline=3)
 
         if self.timer_count % 10 == 0 and self.timer_count > 10:
             if self.last_trade:
@@ -1223,13 +1342,12 @@ class GridVline(CtaTemplate):
                 self.check_price_break(price=price, direction=Direction.LONG)
                 self.check_price_break(price=price, direction=Direction.SHORT)
                 self.update_ref_price()
-                #self.update_trade_prob(price=price)
+                self.update_high_low_price()
                 self.update_avg_trade_price()
                 self.make_decision(price=price)
 
         if self.timer_count % 60 == 0 and self.timer_count > 10:
             self.update_break_count()
-            self.trading_quota = True
 
         if self.timer_count % 600 == 0 and self.timer_count > 10:
             self.update_invest_position()
@@ -1238,7 +1356,6 @@ class GridVline(CtaTemplate):
             self.cancel_all()
 
         self.timer_count += 1
-        #if self.timer_count % 10 == 0 and self.timer_count > 10:
         self.update_variable()
         self.put_event()
 
