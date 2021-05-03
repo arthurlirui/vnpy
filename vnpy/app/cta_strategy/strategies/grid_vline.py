@@ -544,7 +544,10 @@ class GridVline(CtaTemplate):
                 volume = volume * ratio
                 #avail_volume = self.balance_info.data[self.base_currency].available
                 avail_volume = self.get_current_position(base=True, available=True)
-                volume = np.round(np.min([volume, avail_volume]), 4)
+                if volume > 0.9*avail_volume:
+                    volume = np.round(avail_volume, 4)
+                else:
+                    volume = np.round(np.min([volume, avail_volume]), 4)
                 print(f'check_balance {direction.value} {volume}')
             # 2. check position
             if check_position:
@@ -776,9 +779,11 @@ class GridVline(CtaTemplate):
         ratio_fall_down = 1.0
         ratio_high_price = 1.0
         ratio_quota = 1.0
+        ratio_take_profit = 0.0
 
         is_high_position = False
-        cur_position = self.balance_info.data[self.base_currency].available * price
+        #cur_position = self.balance_info.data[self.base_currency].available * price
+        cur_position = self.get_current_position(base=True, available=True)*price
         if cur_position > 0.6 * self.max_invest:
             is_high_position = True
 
@@ -814,16 +819,20 @@ class GridVline(CtaTemplate):
         prev_buy_price, prev_buy_pos, prev_buy_time = self.calc_avg_trade_price(direction=Direction.LONG, vol=avail_volume, timedelta=datetime.timedelta(minutes=180))
 
         if prev_buy_price > 0.1 * price:
-            if price > 1.05 * prev_buy_price:
-                ratio_take_profit = 0.5
-            if price > 1.06 * prev_buy_price:
-                ratio_take_profit = 0.6
-            if price > 1.07 * prev_buy_price:
-                ratio_take_profit = 0.7
-            if price > 1.08 * prev_buy_price:
-                ratio_take_profit = 0.8
-            if price > 1.10 * prev_buy_price:
-                ratio_take_profit = 1.0
+            ratio_take_profit = min(max((price/prev_buy_price-1.05)*100*0.1, 0), 4)
+            ratio_take_profit = float(np.round(ratio_take_profit, 4))
+            # if price > 1.05 * prev_buy_price:
+            #     ratio_take_profit = 0.5
+            # if price > 1.06 * prev_buy_price:
+            #     ratio_take_profit = 0.6
+            # if price > 1.07 * prev_buy_price:
+            #     ratio_take_profit = 0.7
+            # if price > 1.08 * prev_buy_price:
+            #     ratio_take_profit = 0.8
+            # if price > 1.10 * prev_buy_price:
+            #     ratio_take_profit = 1.0
+            # else:
+            #     ratio_take_profit = 0.0
         else:
             ratio_take_profit = 0.0
 
