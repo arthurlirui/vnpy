@@ -941,8 +941,14 @@ class GridVline(CtaTemplate):
 
         # 3. surge sell
         if self.is_surge:
+            '''check current '''
+            ratio_vol = 1.0
+            total_vol = self.get_current_position(base=True, volume=True)
+            if total_vol*price < 0.2 * self.total_invest:
+                ratio_vol = 0.25
             ratio_all = ratio_prob * ratio_sell * ratio_low * ratio_max * ratio_quota
-            # consider holding time here
+            # 1. check position here
+            ratio_all = ratio_all * ratio_vol
             if ratio_all > 0.0:
                 ratio = max(ratio_sell, ratio_low, ratio_max, ratio_profit)
                 exec_order = True
