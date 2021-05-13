@@ -122,9 +122,13 @@ def round_to(value: float, target: float) -> float:
     """
     Round price to price tick value.
     """
-    value = Decimal(str(value))
-    target = Decimal(str(target))
-    rounded = float(int(round(value / target)) * target)
+    rounded = 0.0
+    if target > 0.0:
+        value = Decimal(str(value))
+        target = Decimal(str(target))
+        rounded = float(int(round(value / target)) * target)
+    else:
+        rounded = 0.0
     return rounded
 
 
@@ -388,7 +392,6 @@ class MarketEventGenerator:
             self.hover.close_time = v0.close_time
             self.hover.event = MarketEvent.HOVER
         return is_event
-
 
 class VlineGenerator:
     '''
@@ -900,8 +903,7 @@ class BalanceManager:
 
     def update_balance(self, balance_data: BalanceData):
         if balance_data.accountid == self.accound_id:
-            accdata.v
-            self.balance[accid]
+            pass
 
 
 class BarGenerator:

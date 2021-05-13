@@ -248,6 +248,11 @@ class DistData(BaseData):
         self.vt_symbol = f"{self.symbol}.{self.exchange.value}"
 
 
+class BarFeature:
+    def __init__(self):
+        pass
+
+
 @dataclass
 class BarData(BaseData):
     """
