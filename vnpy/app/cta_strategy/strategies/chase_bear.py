@@ -67,8 +67,7 @@ class ChaseBear(CtaTemplate):
                   'total_invest', 'trade_amount', 'global_prob', 'max_break_count']
 
     variables = ['timer_count', 'cur_invest', 'min_invest', 'max_invest', 'total_invest',
-                 'buy_price', 'sell_price', 'vol_select',
-                 'prev_buy_price', 'prev_sell_price', 'trading_quota']
+                 'vol1m', 'up_line', 'mean_vol', 'buy_price', 'sell_price', 'vol_select', 'trading_quota']
 
     bch3l_vol_list = [1000, 10000, 100000, 1000000]
     default_vol_list = [1000, 10000, 100000, 1000000]
@@ -207,6 +206,10 @@ class ChaseBear(CtaTemplate):
         for kp in self.kline_phase:
             self.spread_vol[kp] = []
 
+        self.vol1m = 0
+        self.up_line = 0
+        self.mean_vol = 0
+
         self.init_data()
 
     def on_start(self):
@@ -240,10 +243,10 @@ class ChaseBear(CtaTemplate):
         #self.load_market_trade(callback=self.on_init_market_trade)
 
         # init local market data for bar
-        if False:
+        if True:
             self.load_bar(days=2, interval=Interval.MINUTE, callback=self.on_kline)
-            self.load_bar(days=2, interval=Interval.MINUTE_5, callback=self.on_kline)
-            self.load_bar(days=2, interval=Interval.MINUTE_15, callback=self.on_kline)
+            #self.load_bar(days=2, interval=Interval.MINUTE_5, callback=self.on_kline)
+            #self.load_bar(days=2, interval=Interval.MINUTE_15, callback=self.on_kline)
         if False:
             self.load_bar(days=2, interval=Interval.MINUTE_30, callback=self.on_kline)
             self.load_bar(days=7, interval=Interval.HOUR, callback=self.on_kline)
@@ -402,6 +405,7 @@ class ChaseBear(CtaTemplate):
             print(list(self.order_book.asks.items())[0:10])
 
     def on_market_trade(self, trade: TradeData):
+        #print(trade)
         self.trade_buf.append(trade)
         self.last_trade = trade
         self.make_decision(price=trade.price)
@@ -429,6 +433,8 @@ class ChaseBear(CtaTemplate):
 
     def on_kline(self, bar: BarData):
         self.kline_buf.append(bar)
+        if bar.interval == Interval.MINUTE:
+            self.vol1m = bar.volume
         #print(len(self.kline_buf), bar)
 
     def on_trade(self, trade: TradeData):
@@ -529,11 +535,11 @@ class ChaseBear(CtaTemplate):
     def generate_order(self, price: float, volume: float, direction: Direction, w: float = 1.0):
         volume1 = float(np.round(volume * w, 2))
         if direction == Direction.LONG:
-            price = np.round(price * (1 + random.uniform(0, 1) * 0.001), 4)
+            price = np.round(price * (1 + random.uniform(0, 1) * 0.001), 8)
             if volume1*price > 5:
                 self.send_order(direction, price=price, volume=volume1, offset=Offset.NONE)
         elif direction == Direction.SHORT:
-            price = np.round(price * (1 - random.uniform(0, 1) * 0.001), 4)
+            price = np.round(price * (1 - random.uniform(0, 1) * 0.001), 8)
             if volume1 * price > 5:
                 self.send_order(direction, price=price, volume=volume1, offset=Offset.NONE)
         else:
@@ -560,12 +566,12 @@ class ChaseBear(CtaTemplate):
             # check 1m kline to determine
             is_stop_loss = self.need_stop_loss(stop_loss_rate=stop_loss_rate)
             if is_stop_loss:
-                self.write_log(f'stop_loss {datetime.datetime.now(tz=MY_TZ)}')
+                #self.write_log(f'stop_loss {datetime.datetime.now(tz=MY_TZ)}')
                 direction = Direction.SHORT
                 # if stop loss, do care position, prob, quota, price, break, risk
                 volume = self.generate_volume(price=price, direction=direction, check_balance=True, check_position=False)
                 self.generate_order(price=price, volume=volume, direction=direction)
-                self.send_order(direction=direction, price=price, volume=volume, offset=Offset.NONE)
+                #self.send_order(direction=direction, price=price, volume=volume, offset=Offset.NONE)
 
     def take_profit(self, price: float):
         if self.timer_count % 60 != 0:
@@ -580,11 +586,11 @@ class ChaseBear(CtaTemplate):
         timedelta_short = datetime.timedelta(minutes=10)
         short_price, short_pos, short_timedelta = self.calc_avg_trade_price(direction=Direction.SHORT, timedelta=timedelta_short)
         if long_timedelta > datetime.timedelta(minutes=30):
-            self.write_log(f'take_profit {datetime.datetime.now(tz=MY_TZ)}')
+            #self.write_log(f'take_profit {datetime.datetime.now(tz=MY_TZ)}')
             direction = Direction.SHORT
             volume = self.generate_volume(price=price, direction=direction, check_balance=True, check_position=False)
             self.generate_order(price=price, volume=volume, direction=direction)
-            self.send_order(direction=direction, price=price, volume=volume, offset=Offset.NONE)
+            #self.send_order(direction=direction, price=price, volume=volume, offset=Offset.NONE)
         elif long_timedelta > datetime.timedelta(minutes=10):
             cur_position = price * self.get_current_position(base=True, volume=True)
             if cur_position > 0.75 * self.max_invest:
@@ -593,22 +599,22 @@ class ChaseBear(CtaTemplate):
                     volume = self.generate_volume(price=price, direction=direction, check_balance=True,
                                                   check_position=False)
                     self.generate_order(price=price, volume=volume, direction=direction)
-                    self.send_order(direction=direction, price=price, volume=volume, offset=Offset.NONE)
+                    #self.send_order(direction=direction, price=price, volume=volume, offset=Offset.NONE)
             if cur_position > 0.5 * self.max_invest:
                 if long_price and price > tp_ratio_0_5 * long_price:
                     direction = Direction.SHORT
                     volume = self.generate_volume(price=price, direction=direction, check_balance=True,
                                                   check_position=False)
                     self.generate_order(price=price, volume=volume, direction=direction)
-                    self.send_order(direction=direction, price=price, volume=volume, offset=Offset.NONE)
+                    #self.send_order(direction=direction, price=price, volume=volume, offset=Offset.NONE)
             if cur_position > 0.0 * self.max_invest:
                 if long_price and price > tp_ratio_0_0 * long_price:
-                    self.write_log(f'take_profit {datetime.datetime.now(tz=MY_TZ)}')
+                    #self.write_log(f'take_profit {datetime.datetime.now(tz=MY_TZ)}')
                     direction = Direction.SHORT
                     volume = self.generate_volume(price=price, direction=direction, check_balance=True,
                                                   check_position=False)
                     self.generate_order(price=price, volume=volume, direction=direction)
-                    self.send_order(direction=direction, price=price, volume=volume, offset=Offset.NONE)
+                    #self.send_order(direction=direction, price=price, volume=volume, offset=Offset.NONE)
         else:
             pass
 
@@ -626,15 +632,18 @@ class ChaseBear(CtaTemplate):
         bars1m = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=Interval.MINUTE)
         num_kline = len(bars1m)
         bars1m_data = bars1m[-180:-60]
-        if len(bars1m_data) < 100:
+        if len(bars1m) < 100:
+            print(len(bars1m), len(bars1m_data))
             return
         low_price_sorted = np.sort(np.array([bar.low_price for bar in bars1m_data]))
         high_price_sorted = np.sort(np.array([bar.high_price for bar in bars1m_data]))
         up_line = np.max(high_price_sorted[10:-10])
+        self.up_line = up_line
         down_line = np.min(low_price_sorted[10:-10])
 
         vol_sorted = np.sort(np.array([bar.volume for bar in bars1m_data]))
         mean_vol = np.median(vol_sorted)
+        self.mean_vol = mean_vol
         cur_vol = bars1m[-1].volume
         is_price_break_up = False
         is_volume_increase = False
@@ -645,17 +654,18 @@ class ChaseBear(CtaTemplate):
             is_volume_increase = True
         if is_price_break_up and is_volume_increase:
             is_chase_up = True
+        print(up_line, cur_vol, vol_ratio*mean_vol)
 
         if is_chase_up:
             cur_position = price * self.get_current_position(base=True, volume=True)
             #cur_position = self.balance_info.data[self.base_currency].available * price
             if cur_position < self.max_invest:
-                self.write_log(f'Chasing up {datetime.datetime.now(tz=MY_TZ)}')
+                #self.write_log(f'Chasing up {datetime.datetime.now(tz=MY_TZ)}')
                 direction = Direction.LONG
                 volume = self.generate_volume(price=price, direction=direction,
                                               check_position=True)
                 self.generate_order(price=price, volume=volume, direction=direction)
-                self.send_order(direction=direction, price=price, volume=volume, offset=Offset.NONE)
+                #self.send_order(direction=direction, price=price, volume=volume, offset=Offset.NONE)
 
     def kill_down(self, price: float, price_sell_ratio: float = 0.95):
         # bars15m = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=Interval.MINUTE_15)
@@ -691,13 +701,13 @@ class ChaseBear(CtaTemplate):
         # 3. check position
         if self.is_kill_down:
             '''start killing down'''
-            self.write_log(f'Killing down {datetime.datetime.now(tz=MY_TZ)}')
+            #self.write_log(f'Killing down {datetime.datetime.now(tz=MY_TZ)}')
             # 1. price is in low position: check bars
             direction = Direction.SHORT
             volume = self.generate_volume(price=price, direction=direction,
                                           check_position=True)
             self.generate_order(price=price, volume=volume, direction=direction)
-            self.send_order(direction=direction, price=price, volume=volume, offset=Offset.NONE)
+            #self.send_order(direction=direction, price=price, volume=volume, offset=Offset.NONE)
 
     def make_decision(self, price: float):
         ''''''
@@ -716,55 +726,6 @@ class ChaseBear(CtaTemplate):
         # 5. take profit
         if True:
             self.take_profit(price=price)
-
-    def update_high_low_price(self):
-        bars1m = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=Interval.MINUTE)
-        bars1m_data = bars1m[-360:]
-        low_price = np.array([bar.low_price for bar in bars1m_data])
-        high_price = np.array([bar.high_price for bar in bars1m_data])
-
-        # 1. reverse price array to find low minimal
-        if len(low_price) > 0:
-            peaks_low, _ = find_peaks(np.max(low_price) + 10 - low_price, distance=10, prominence=0.3, width=5)
-            if len(peaks_low) > 0:
-                self.prev_low_price = bars1m_data[peaks_low[-1]].low_price
-            else:
-                self.prev_low_price = None
-
-        if len(high_price) > 0:
-            peaks_high, _ = find_peaks(high_price, distance=10, prominence=0.3, width=5)
-            if len(peaks_high) > 0:
-                self.prev_high_price = bars1m_data[peaks_high[-1]].high_price
-            else:
-                self.prev_high_price = None
-
-    def update_ref_price(self):
-        '''update reference price for buy and sell'''
-        # 1. choose proper vline to calculate ref price
-        kline_1m = self.kqg.get_bars(self.vt_symbol, Interval.MINUTE)
-        kl360 = kline_1m[-20:]
-        avg_vol = float(sum([kl.amount for kl in kl360]) / len(kl360))
-        vol_list = self.market_params[self.symbol]['vline_vol_list']
-        vol = min([vol for vol in vol_list if avg_vol*20 < vol])
-
-        self.vol_select = vol
-        self.buy_price = float(np.round(self.vqg[self.vt_symbol].vq[vol].top_k_price(k=0.05), 4))
-        self.sell_price = float(np.round(self.vqg[self.vt_symbol].vq[vol].top_k_price(k=0.95), 4))
-
-    def update_trade_prob(self, price: float):
-        # 1. choose proper vline to calculate ref price
-        # 2. update buy or sell probility
-        if self.buy_price:
-            self.buy_prob = self.calc_pro_buy(price=price, price_ref=self.buy_price, theta=self.theta, global_prob=self.global_prob)
-        if self.sell_price:
-            self.sell_prob = self.calc_pro_sell(price=price, price_ref=self.sell_price, theta=self.theta, global_prob=self.global_prob)
-
-    def update_position_budget(self, price: float):
-        # check current position
-        #cur_position = self.balance_info.data[self.base_currency].available * price
-        cur_position = self.get_current_position(base=True, available=True)*price
-        if cur_position > 0.9*self.max_invest:
-            self.max_invest = min(self.total_invest, cur_position+0.1*self.total_invest)
 
     def allocate_invest_limit(self, unit_size: int = 1, unit_ratio: float = 0.1):
         datetime_now = datetime.datetime.now(tz=MY_TZ)
@@ -982,62 +943,52 @@ class ChaseBear(CtaTemplate):
     def update_variable(self):
         if self.timer_count > 10:
             self.timer_count = int(self.timer_count)
-            self.upper_break_count = int(self.upper_break_count)
-            self.lower_break_count = int(self.lower_break_count)
-            self.buy_prob = float(self.buy_prob)
-            self.sell_prob = float(self.sell_prob)
+            #self.upper_break_count = int(self.upper_break_count)
+            #self.lower_break_count = int(self.lower_break_count)
+            #self.buy_prob = float(self.buy_prob)
+            #self.sell_prob = float(self.sell_prob)
             self.min_invest = float(self.min_invest)
+            self.cur_invest = float(self.cur_invest)
             self.max_invest = float(self.max_invest)
             self.total_invest = float(self.total_invest)
-            if self.buy_price:
-                self.buy_price = float(self.buy_price)
-            if self.sell_price:
-                self.sell_price = float(self.sell_price)
-            if self.prev_buy_price:
-                self.prev_buy_price = float(self.prev_buy_price)
-            if self.prev_sell_price:
-                self.prev_sell_price = float(self.prev_sell_price)
-            if self.prev_high_price:
-                self.prev_high_price = float(self.prev_high_price)
-            if self.prev_low_price:
-                self.prev_low_price = float(self.prev_low_price)
+            self.vol1m = float(self.vol1m)
+            self.mean_vol = float(self.mean_vol)
+            self.up_line = float(self.up_line)
+            #if self.buy_price:
+            #    self.buy_price = float(self.buy_price)
+            #if self.sell_price:
+            #    self.sell_price = float(self.sell_price)
+            #if self.prev_buy_price:
+            #    self.prev_buy_price = float(self.prev_buy_price)
+            #if self.prev_sell_price:
+            #    self.prev_sell_price = float(self.prev_sell_price)
+            #if self.prev_high_price:
+            #    self.prev_high_price = float(self.prev_high_price)
+            #if self.prev_low_price:
+            #    self.prev_low_price = float(self.prev_low_price)
 
     def on_timer(self):
         '''
         if data init, update market trades for vline queue generator, vline generator
         '''
-        if not self.is_data_inited:
-            return
+        #if not self.is_data_inited:
+        #    return
 
         self.update_market_trade(time_step=1)
-        #self.update_price_gain_speed_vline(num_vline=3, time_step=1)
-        #if self.is_slump or self.is_surge:
-        #    self.release_trading_quota(timestep=1)
-        #else:
-        #    self.release_trading_quota(timestep=10)
         self.release_trading_quota(timestep=10)
         self.update_invest_limit(update_time_period=datetime.timedelta(minutes=1))
-        #if self.timer_count % 1 == 0 and self.timer_count > 10:
-        #    self.update_market_trade()
-        #    self.update_price_gain_speed_vline(num_vline=3)
         if self.timer_count % 1 == 0 and self.timer_count > 10:
             if self.last_trade:
                 price = self.last_trade.price
-                #self.check_price_break(price=price, direction=Direction.LONG)
-                #self.check_price_break(price=price, direction=Direction.SHORT)
                 self.make_decision(price=price)
 
         if self.timer_count % 10 == 0 and self.timer_count > 10:
             self.update_avg_trade_price()
-            #self.update_ref_price()
-            #self.update_high_low_price()
 
         if self.timer_count % 60 == 0 and self.timer_count > 10:
             print(datetime.datetime.now(tz=MY_TZ))
-            #self.update_break_count()
 
         if self.timer_count % 600 == 0 and self.timer_count > 10:
-            #self.update_invest_position()
             self.update_invest_limit()
 
         if self.timer_count % 3600 == 0 and self.timer_count > 10:
