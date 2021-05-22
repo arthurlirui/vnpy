@@ -1,7 +1,8 @@
 from vnpy.app.cta_strategy.backtesting import BacktestingEngine, OptimizationSetting
 from vnpy.app.cta_strategy.adv_backtesting import AdvBacktestingEngine
 from vnpy.app.cta_strategy.strategies.atr_rsi_strategy import AtrRsiStrategy
-from vnpy.app.cta_strategy.strategies.test_strategy import TestStrategy
+#from vnpy.app.cta_strategy.strategies.test_strategy import TestStrategy
+from vnpy.app.cta_strategy.strategies.grid_vline import GridVline
 from datetime import datetime
 
 engine = AdvBacktestingEngine()
@@ -37,7 +38,7 @@ parameters = {'vline_vol': 5,
               'max_trade_vol': 0.5}
 
 setting = {'parameters': parameters}
-engine.add_strategy(TestStrategy, setting)
+engine.add_strategy(GridVline, setting)
 engine.load_data()
 engine.run_backtesting()
 
