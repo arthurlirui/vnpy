@@ -46,6 +46,7 @@ class AdvBacktestingEngine:
         self.start = None
         self.end = None
         self.rate = 0
+
         self.slippage = 0
         self.size = 1
         self.pricetick = 0

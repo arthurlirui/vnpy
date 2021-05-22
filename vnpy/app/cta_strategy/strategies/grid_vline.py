@@ -16,6 +16,7 @@ import datetime
 import matplotlib.pyplot as plt
 #from scipy.misc import electrocardiogram
 from scipy.signal import find_peaks
+from pprint import pprint
 
 from vnpy.trader.constant import (
     Direction,
@@ -62,7 +63,7 @@ class GridVline(CtaTemplate):
                   'total_invest', 'trade_amount', 'global_prob', 'max_break_count']
 
     variables = ['timer_count', 'upper_break', 'lower_break', 'upper_break_count', 'lower_break_count',
-                 'buy_prob', 'sell_prob', 'min_invest', 'max_invest', 'total_invest',
+                 'buy_prob', 'sell_prob', 'cur_invest', 'min_invest', 'max_invest', 'total_invest',
                  'buy_price', 'sell_price', 'vol_select',
                  'prev_buy_price', 'prev_sell_price', 'trade_speed', 'trade_gain',
                  'prev_high_price', 'prev_low_price', 'trading_quota']
@@ -127,7 +128,6 @@ class GridVline(CtaTemplate):
         self.kqg = BarQueueGenerator()
         self.is_data_inited = False
         #self.trading = False
-        self.init_data()
 
         self.last_tick = None
         self.last_trade = None
@@ -158,6 +158,7 @@ class GridVline(CtaTemplate):
         #self.total_invest = 400.0
         self.max_invest = 100.0
         self.min_invest = 0
+        self.cur_invest = 0
         #self.cur_invest = {}
 
         # init price break count
@@ -199,22 +200,7 @@ class GridVline(CtaTemplate):
         self.is_retreat = False
         self.is_slump = False
 
-        #self.pre_trade = []
-        #self.live_timedelta = datetime.timedelta(hours=12)
-
-        # self.buy_price0 = None
-        # self.sell_price0 = None
-        # self.buy_price1 = None
-        # self.sell_price1 = None
-        # self.buy_price2 = None
-        # self.sell_price2 = None
-        # self.buy_price3 = None
-        # self.sell_price3 = None
-        # self.buy_price4 = None
-        # self.sell_price4 = None
-
-        #self.buy_price = [self.buy_price0, self.buy_price1, self.buy_price2, self.buy_price3, self.buy_price4]
-        #self.sell_price = [self.sell_price0, self.sell_price1, self.sell_price2, self.sell_price3, self.sell_price4]
+        #
         self.buy_price = None
         self.sell_price = None
         self.vol_select = self.market_params[self.symbol]['vline_vol_list'][0]
@@ -224,7 +210,21 @@ class GridVline(CtaTemplate):
         self.trade_gain = -1
 
         # position update time
-        self.update_position_datetime = None
+        self.update_invest_limit_time = None
+
+        # kline based features
+        self.kline_phase1 = 20
+        self.kline_phase2 = 3
+        self.spread_vol1 = []
+        self.spread_vol2 = []
+        self.kline_phase = [3, 10, 20]
+        self.spread_vol = {}
+        self.kline_feature = {}
+        self.kline_feature['spread_vol'] = {}
+        for kp in self.kline_phase:
+            self.spread_vol[kp] = []
+
+        self.init_data()
 
     def on_start(self):
         """
@@ -249,6 +249,7 @@ class GridVline(CtaTemplate):
         # init local market data for vline
         # first init vline queue generator, vline generator by kline
         # then update vline queue generator, vline generator by history trade
+
         self.init_buf()
         self.load_bar(days=2, interval=Interval.MINUTE, callback=self.on_save_his_kline)
         self.load_market_trade(callback=self.on_save_his_trades)
@@ -273,8 +274,6 @@ class GridVline(CtaTemplate):
         # load account and balance
         self.load_account()
         self.is_data_inited = True
-        #self.trading = True
-
         if True:
             for vt_symbol in self.vg:
                 vlines = self.vg[vt_symbol].vlines
@@ -464,6 +463,7 @@ class GridVline(CtaTemplate):
 
     def on_kline(self, bar: BarData):
         self.kline_buf.append(bar)
+        print(len(self.kline_buf), bar)
 
     def on_trade(self, trade: TradeData):
         if len(self.account_trades) > 0:
@@ -974,7 +974,6 @@ class GridVline(CtaTemplate):
             exec_order, ratio = self.swing_trading_short(price=price)
         else:
             pass
-        #print(f'check_probability {direction.value} {volume}')
         return exec_order, ratio
 
     def swing_trading(self, price: float):
@@ -1040,9 +1039,28 @@ class GridVline(CtaTemplate):
             self.send_order(direction=direction, price=price, volume=volume, offset=Offset.NONE)
 
     def chase_up(self, price: float, price_buy_ratio: float = 1.02):
+        '''
+        1. trading volume change: low to high
+        2. previous price variation
+        3. previous high low price bound
+        '''
+        # 1. check current price with previous kline: is_slip or is_climb
+        # 1. check current price with previous price: low or high
+        # 2. check previous low peaks price
+        # 3. check holding position
+        # 4. check price break kline
+        # 5. trading volume change: low to high
+        # 6. price break
+
+        # 1. check kline
         bars1m = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=Interval.MINUTE)
+        num_kline = len(bars1m)
         bars1m_data = bars1m[-360:]
         low_price = np.array([bar.low_price for bar in bars1m_data])
+        high_price = np.array([bar.high_price for bar in bars1m_data])
+        # phase 1: -20:-4, phase 2: -4:len(kline)
+        spread_vol1, total_vol1, avg_spread_vol1 = self.calc_spread_vol_kline(start=num_kline-20, end=num_kline-4)
+        spread_vol2, total_vol2, avg_spread_vol2 = self.calc_spread_vol_vline(start=num_kline-4, end=num_kline)
 
         # 1. reverse price array to find low minimal
         if len(low_price) == 0:
@@ -1164,8 +1182,19 @@ class GridVline(CtaTemplate):
 
     def make_decision(self, price: float):
         ''''''
+        vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
+        num_vlines = len(vlines)
+        tt = num_vlines
+        #self.calc_spread_turn_over_signal(num_vline1=100, num_vline2=5)
+        spread_vol1, _, _ = self.calc_spread_vol_vline(start=tt - 100, end=tt)
+        spread_vol2, _, _ = self.calc_spread_vol_vline(start=tt - 10, end=tt)
+        spread_vol3, _, _ = self.calc_spread_vol_vline(start=tt - 5, end=tt)
+        spread_vol4, _, _ = self.calc_spread_vol_vline(start=tt - 3, end=tt)
+        spread_vol5, _, _ = self.calc_spread_vol_vline(start=tt - 1, end=tt)
+        print('%.6f, %.6f, %.6f %.6f %.6f'%(spread_vol1, spread_vol2, spread_vol3, spread_vol4, spread_vol5))
         # 1. swing trading
-        self.swing_trading(price=price)
+        if False:
+            self.swing_trading(price=price)
 
         # 2. chasing up
         if False:
@@ -1182,6 +1211,10 @@ class GridVline(CtaTemplate):
         # 5. take profit
         if False:
             self.take_profit(price=price)
+
+        # 6. re-balance operation
+        if False:
+            pass
 
     def update_high_low_price(self):
         bars1m = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=Interval.MINUTE)
@@ -1232,7 +1265,16 @@ class GridVline(CtaTemplate):
         if cur_position > 0.9*self.max_invest:
             self.max_invest = min(self.total_invest, cur_position+0.1*self.total_invest)
 
-    def update_position(self, update_time_period: datetime.timedelta(minutes=5)):
+    def allocate_invest_limit(self, unit_size: int = 1, unit_ratio: float = 0.1):
+        datetime_now = datetime.datetime.now(tz=MY_TZ)
+        self.max_invest = self.max_invest + unit_size * unit_ratio * self.total_invest
+        self.update_invest_limit_time = datetime_now
+
+    def update_invest_limit(self, update_time_period: datetime.timedelta = datetime.timedelta(minutes=5)):
+        '''
+        1. current invest: max_invest = max_invest + base_invest, and allocate periodically
+        2. allocate more invest limit for specific case
+        '''
         if self.last_trade:
             price = self.last_trade.price
         else:
@@ -1241,40 +1283,16 @@ class GridVline(CtaTemplate):
         datetime_now = datetime.datetime.now(tz=MY_TZ)
         base_invest = 0.1 * self.total_invest
         cur_invest = self.get_current_position(base=True, volume=True) * price
-        new_max_invest = max(min(int(cur_invest/base_invest+1)*base_invest, base_invest), self.total_invest)
+        self.cur_invest = float(np.round(cur_invest, 4))
+        new_max_invest = min(max(int(self.cur_invest/base_invest+1)*base_invest, base_invest), self.total_invest)
 
-        if self.update_position_datetime+update_time_period < datetime_now:
-            if cur_invest > 0.95 * self.max_invest:
-                self.max_invest = min(self.total_invest, new_max_invest + base_invest)
-                self.update_position_datetime = datetime_now
-            else:
-                self.max_invest = new_max_invest
-                self.update_position_datetime = datetime_now
+        if not self.update_invest_limit_time:
+            self.max_invest = new_max_invest
+            self.update_invest_limit_time = datetime_now
 
-        # bars1m = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=Interval.MINUTE)
-        # bars1m_data = bars1m[-360:]
-        # high_price = np.max([bar.high_price for bar in bars1m_data])
-        # self.min_invest = 0.1 * self.total_invest
-        # self.base_invest = 0.1 * self.total_invest
-        # self.max_invest = max(self.base_invest, se)
-        # new_max_invest = self.min_invest + max(0, (1.0-price/high_price)/0.05*0.2*self.total_invest)
-        # new_max_invest = float(np.round(min(self.total_invest, new_max_invest), 0))
-        # #self.max_invest = min(self.total_invest, self.max_invest)
-        # '''initialize max_invest'''
-        # datetime_now = datetime.datetime.now(tz=MY_TZ)
-        # if not self.max_invest:
-        #     self.max_invest = new_max_invest
-        #     self.update_position_datetime = datetime_now
-        # '''adjust current max invest'''
-        # if self.max_invest and np.abs(new_max_invest-self.max_invest) > 100:
-        #     self.max_invest = new_max_invest
-        #     self.update_position_datetime = datetime_now
-        # '''slow suck: if position is full, re-allocate position'''
-        # if self.update_position_datetime and self.update_position_datetime < datetime_now-datetime.timedelta(minutes=10):
-        #     cur_invest = self.get_current_position(base=True, volume=True)*price
-        #     if cur_invest > 0.95*self.max_invest:
-        #         self.max_invest = min(self.total_invest, self.max_invest+0.1*self.total_invest)
-        #         self.update_position_datetime = datetime_now
+        if self.update_invest_limit_time+update_time_period < datetime_now:
+            self.update_invest_limit_time = datetime_now
+            self.max_invest = min(self.total_invest, new_max_invest)
 
     def update_invest_position(self):
         '''update invest position'''
@@ -1296,9 +1314,47 @@ class GridVline(CtaTemplate):
         if cur_position > 0.9 * self.max_invest:
             self.max_invest = min(self.total_invest, self.max_invest + 0.1 * self.total_invest)
         self.max_invest = np.round(self.max_invest, 4)
-        #self.update_position_budget(price=price)
 
-    def calc_price_gain_speed(self, num_vline: int = 3):
+    def calc_vline_break(self):
+        pass
+
+    def calc_spread_vol_vline(self, start: int, end: int) -> float:
+        vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
+        avg_spread_vol = 0
+        spread_vol = 0
+        total_vol = 0
+        if not start:
+            start = 0
+        if not end:
+            end = len(vlines)
+        if start and end and start < end and start <= len(vlines) and end <= len(vlines):
+            vline_start_end = vlines[start: end]
+            spread_vol = np.sum([(vl.close_price - vl.open_price) / vl.open_price * vl.volume for vl in vline_start_end])
+            total_vol = np.sum([vl.volume for vl in vline_start_end])
+            #avg_vol = total_vol / len(vline_start_end)
+            if total_vol > 0:
+                avg_spread_vol = spread_vol / total_vol
+        return spread_vol, total_vol, avg_spread_vol
+
+    def calc_spread_vol_kline(self, start: int, end: int, interval: Interval = Interval.MINUTE) -> float:
+        klines = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=interval)
+        #num_kline = len(klines)
+        avg_spread_vol = 0
+        spread_vol = 0
+        total_vol = 0
+        if not start:
+            start = 0
+        if not end:
+            end = len(klines)
+        if start and end and start < end and start <= len(klines) and end <= len(klines):
+            kline_start_end = klines[start: end]
+            spread_vol = np.sum([(kl.close_price - kl.open_price) / kl.open_price * kl.volume for kl in kline_start_end])
+            total_vol = np.sum([kl.volume for kl in kline_start_end])
+            if total_vol > 0:
+                avg_spread_vol = spread_vol / total_vol
+        return spread_vol, total_vol, avg_spread_vol
+
+    def calc_gain_speed(self, num_vline: int = 3):
         vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
         if len(vlines) < num_vline:
             return
@@ -1392,14 +1448,14 @@ class GridVline(CtaTemplate):
         else:
             self.lower_break = True
 
-    def update_price_gain_speed_kline(self):
-        pass
-
     def update_price_gain_speed_vline(self, num_vline: int = 3, time_step: int = 1):
-        self.trade_gain, self.trade_speed = self.calc_price_gain_speed(num_vline=num_vline)
+        self.trade_gain, self.trade_speed = self.calc_gain_speed(num_vline=num_vline)
         self.trade_gain = np.round(self.trade_gain, 4)
         self.trade_speed = np.round(self.trade_speed, 4)
         self.check_surge_slump(thresh_gain=0.01, thresh_speed=30, num_vline=5)
+
+    def determine_market_status_vline(self):
+        pass
 
     def check_gain_slip(self, count: int = 3):
         kline_1m = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=Interval.MINUTE)
@@ -1411,9 +1467,58 @@ class GridVline(CtaTemplate):
         self.is_gain = gain_count >= count
         self.is_slip = slip_count >= count
 
+    def calc_spread_turn_over_signal(self, num_vline1: int = 1000, num_vline2: int = 5):
+        '''1. previous negative spread, 2. receive position spread'''
+        vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
+        num_vlines = len(vlines)
+        if num_vlines < num_vline1 or num_vlines < num_vline2:
+            return 
+        s1 = num_vlines - num_vline1
+        e1 = num_vlines - num_vline2
+        s2 = num_vlines - num_vline2
+        e2 = num_vlines - 1
+        spread_vol1 = self.calc_spread_vol_vline(start=s1, end=e1)
+        spread_vol2 = self.calc_spread_vol_vline(start=s2, end=e2)
+        if spread_vol2 > 0.0001:
+            pass
+        print()
+        print(spread_vol1)
+        print(vlines[s1])
+        print(vlines[e1])
+        print(spread_vol2)
+        print(vlines[s2])
+        print(vlines[e2])
+
+    def check_gain_slip_vline(self, start: int = None, end: int = None, num_vline: int = 3, thresh: float = 0.01):
+        vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
+        if start and end and start < end and start < len(vlines) and end < len(vlines):
+            vline_start_end = vlines[start: end]
+            avg_spread_vol = np.mean([(vl.close_price-vl.open_price)/vl.open_price * vl.volume for vl in vline_start_end])
+            avg_vol = np.mean([vl.volume for vl in vline_start_end])
+            if avg_spread_vol > thresh*avg_vol:
+                self.is_gain = True
+            elif avg_spread_vol < -1*thresh*avg_vol:
+                self.is_slip = True
+            else:
+                self.is_gain = False
+                self.is_slip = False
+
+        # kline_1m = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=Interval.MINUTE)
+        # kline_tmp = kline_1m[-1 * count:]
+        # close_open_ratio = [bar.close_price / bar.open_price for bar in kline_tmp]
+        # high_low_ratio = [bar.high_price / bar.low_price for bar in kline_tmp]
+        # gain_count = sum(
+        #     [int(close_open_ratio[i] > 1.005 | high_low_ratio[i] < 1.005) for i in range(close_open_ratio)])
+        # slip_count = sum(
+        #     [int(close_open_ratio[i] < 1.005 | high_low_ratio[i] < 1.005) for i in range(close_open_ratio)])
+        # self.is_gain = gain_count >= count
+        # self.is_slip = slip_count >= count
+
     def check_climb_retreat(self, thresh: float = 100, num_vline: int = 20):
         vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
         if len(vlines) < num_vline:
+            self.is_climb = False
+            self.is_retreat = False
             return
         vlines20 = vlines[-1*num_vline:]
         price_gain_vol = 0
@@ -1487,9 +1592,49 @@ class GridVline(CtaTemplate):
             for bar in self.kline_buf:
                 self.kqg.update_bar(bar=bar)
 
+                # update kline based features here:
+                if bar.interval == Interval.MINUTE:
+                    self.update_kline_feature(bar=bar, interval=Interval.MINUTE)
+
             self.trade_buf = []
             self.kline_buf = []
             self.tick_buf = []
+
+    def update_kline_feature(self, bar: BarData, interval: Interval = Interval.MINUTE):
+        # update kline based features
+        for kp in self.kline_phase:
+            start = -1 * kp
+            end = None
+            spread_vol, total_vol, avg_spread_vol = self.calc_spread_vol_kline(start=start, end=end, interval=interval)
+
+
+
+
+        spread_vol1, total_vol1, avg_spread_vol1 = self.calc_spread_vol_kline(start=-1 * self.kline_phase1,
+                                                                              end=-1 * self.kline_phase2,
+                                                                              interval=interval)
+        spread_vol2, total_vol2, avg_spread_vol2 = self.calc_spread_vol_kline(start=-1 * self.kline_phase2,
+                                                                              end=None,
+                                                                              interval=interval)
+        klines = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=interval)
+        if len(self.spread_vol1) == 0:
+            self.spread_vol1.append(spread_vol1)
+        else:
+            if bar.open_time == klines[-1].open_time:
+                self.spread_vol1[-1] = spread_vol1
+            else:
+                self.spread_vol1.append(spread_vol1)
+
+        if len(self.spread_vol2) == 0:
+            self.spread_vol2.append(spread_vol2)
+        else:
+            if bar.open_time == klines[-1].open_time:
+                self.spread_vol2[-1] = spread_vol2
+            else:
+                self.spread_vol2.append(spread_vol2)
+        #vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
+        klines = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=interval)
+        print(len(self.spread_vol1), spread_vol1, spread_vol2, klines[-1].open_time, klines[-1].datetime)
 
     def update_variable(self):
         if self.timer_count > 10:
@@ -1527,7 +1672,7 @@ class GridVline(CtaTemplate):
             self.release_trading_quota(timestep=1)
         else:
             self.release_trading_quota(timestep=10)
-        self.update_position()
+        self.update_invest_limit()
 
         #if self.timer_count % 1 == 0 and self.timer_count > 10:
         #    self.update_market_trade()
@@ -1550,7 +1695,7 @@ class GridVline(CtaTemplate):
 
         if self.timer_count % 600 == 0 and self.timer_count > 10:
             #self.update_invest_position()
-            self.update_position()
+            self.update_invest_limit()
 
         if self.timer_count % 3600 == 0 and self.timer_count > 10:
             self.cancel_all()

@@ -1,5 +1,5 @@
 from vnpy.trader.constant import Direction
-from vnpy.trader.object import TradeData, OrderData, TickData
+from vnpy.trader.object import TradeData, OrderData, TickData, OrderBookData
 from vnpy.trader.object import VlineData, BarData, PositionData, MarketEventData
 from vnpy.trader.engine import BaseEngine
 from vnpy.app.algo_trading import AlgoTemplate
@@ -45,20 +45,30 @@ class Downloader(CtaTemplate):
         "interval": 10,
         "test": 1000,
     }
+    variables = ['count1m', 'count5m', 'count15m', 'count30m', 'count1h', 'count4h',
+                 'count1d', 'count1mon', 'count1w', 'count1y']
 
-    #variables = ["pos", "timer_count", "vt_orderid"]
-    variables = []
-
-    usdt_vol_list = [10, 40, 160, 640, 2560, 10240, 40960]
-    market_params = {'btcusdt': {'vline_vol': 10, 'vline_vol_list': usdt_vol_list, 'bin_size': 1.0},
-                     'ethusdt': {'vline_vol': 10, 'vline_vol_list': usdt_vol_list, 'bin_size': 1.0}}
+    #usdt_vol_list = [10, 40, 160, 640, 2560, 10240, 40960]
+    #market_params = {'btcusdt': {'vline_vol': 10, 'vline_vol_list': usdt_vol_list, 'bin_size': 1.0},
+    #                 'ethusdt': {'vline_vol': 10, 'vline_vol_list': usdt_vol_list, 'bin_size': 1.0}}
 
     parameters = ['savepath']
     savepath = '/home/lir0b/data/TradingData'
-    maxnum = 100000
-    vline_vol = 10
-    vline_num = 5
-    vline_vol_list = [10, 40, 160, 640, 2560, 10240, 40960]
+    maxnum = 10000
+    count1m = 0
+    count5m = 0
+    count15m = 0
+    count30m = 0
+    count1h = 0
+    count4h = 0
+    count1d = 0
+    count1mon = 0
+    count1w = 0
+    count1y = 0
+    #maxnum = 100000
+    #vline_vol = 10
+    #vline_num = 5
+    #vline_vol_list = [10, 40, 160, 640, 2560, 10240, 40960]
 
     def __init__(
         self,
@@ -69,11 +79,24 @@ class Downloader(CtaTemplate):
     ):
         """"""
         super(Downloader, self).__init__(cta_engine, strategy_name, vt_symbol, setting)
-        self.symbols = ['btcusdt']
-        self.exchanges = ['HUOBI']
+        # self.symbols = ['btcusdt', 'btc3lusdt', 'btc3susdt',
+        #                 'bchusdt', 'bch3lusdt', 'bch3susdt',
+        #                 'ethusdt', 'eth3lusdt', 'eth3susdt',
+        #                 'ltcusdt', 'ltc3lusdt', 'ltc3susdt',
+        #                 'linkusdt', 'link3lusdt', 'link3susdt', 'bsvusdt', 'bsc3lusdt', 'bsv3susdt']
+        # self.exchanges = ['HUOBI']
         self.on_init()
         #self.init_parameter()
         #self.load_all_contracts()
+        self.interval2count = {Interval.MINUTE: self.count1m,
+                               Interval.MINUTE_5: self.count5m,
+                               Interval.MINUTE_15: self.count15m,
+                               Interval.MINUTE_30: self.count30m,
+                               Interval.HOUR: self.count1h,
+                               Interval.HOUR_4: self.count4h,
+                               Interval.WEEKLY: self.count1w,
+                               Interval.MONTHLY: self.count1mon,
+                               Interval.YEARLY: self.count1y}
 
     def init_parameter(self, parameters: dict = {}):
         for key in parameters:
@@ -111,9 +134,12 @@ class Downloader(CtaTemplate):
         """
         self.write_log("策略停止")
 
+    def on_order_book(self, order_book: OrderBookData):
+        pass
+
     def init_data(self):
         self.load_market_trade(callback=self.on_init_market_trade)
-        self.load_bar(2, interval=Interval.MINUTE, callback=self.on_init_vline_queue)
+        self.load_bar(days=2, interval=Interval.MINUTE, callback=self.on_init_vline_queue)
 
     def load_tick(self, days: int, callback: Callable):
         """
@@ -125,8 +151,6 @@ class Downloader(CtaTemplate):
         self.cta_engine.load_market_trade(self.vt_symbol, callback=callback)
 
     def load_all_contracts(self, callback: Callable = None):
-        #all_contract = self.cta_engine.get_all_contracts()
-        #print(all_contract)
         pass
 
     def on_tick(self, tick: TickData):
@@ -159,18 +183,31 @@ class Downloader(CtaTemplate):
 
     def on_timer(self):
         """"""
-        if not self.last_tick:
-            return
+        #if not self.last_tick:
+        #    return
+        if self.timer_count % 1 == 0:
+            self.count1m = self.interval2count[Interval.MINUTE]
+            self.count5m = self.interval2count[Interval.MINUTE_5]
+            self.count15m = self.interval2count[Interval.MINUTE_15]
+            self.count30m = self.interval2count[Interval.MINUTE_30]
+            self.count1h = self.interval2count[Interval.HOUR]
+            self.count4h = self.interval2count[Interval.HOUR_4]
+            self.count1w = self.interval2count[Interval.WEEKLY]
+            self.count1mon = self.interval2count[Interval.MONTHLY]
+            self.count1y = self.interval2count[Interval.YEARLY]
 
         self.timer_count += 1
-        # if self.timer_count < self.interval:
-        #     self.put_variables_event()
-        #     return
-        #self.timer_count = 0
         self.pos += 1
+        self.put_event()
 
     def on_kline(self, bar: BarData):
-        pass
+        if not bar.interval in self.klines:
+            self.klines[bar.interval] = []
+        if bar.interval in self.klines:
+            self.klines[bar.interval].append(bar)
+            self.interval2count[bar.interval] = len(self.klines[bar.interval])
+            print('kline', bar, 'len:', len(self.klines[bar.interval]))
+
         # vt_symbol = bar.vt_symbol
         # if bar.interval == Interval.HOUR:
         #     print(bar)

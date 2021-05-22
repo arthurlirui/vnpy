@@ -56,6 +56,7 @@ class BacktesterManager(QtWidgets.QWidget):
         self.class_names = self.backtester_engine.get_strategy_class_names()
 
         for class_name in self.class_names:
+            print(class_name)
             setting = self.backtester_engine.get_default_setting(class_name)
             self.settings[class_name] = setting
 

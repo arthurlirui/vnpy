@@ -58,6 +58,7 @@ class CtaTemplate(ABC):
         class_parameters = {}
         for name in cls.parameters:
             class_parameters[name] = getattr(cls, name)
+        print(class_parameters)
         return class_parameters
 
     def get_parameters(self):

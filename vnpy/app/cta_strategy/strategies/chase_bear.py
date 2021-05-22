@@ -535,11 +535,11 @@ class ChaseBear(CtaTemplate):
     def generate_order(self, price: float, volume: float, direction: Direction, w: float = 1.0):
         volume1 = float(np.round(volume * w, 2))
         if direction == Direction.LONG:
-            price = np.round(price * (1 + random.uniform(0, 1) * 0.001), 8)
+            price = np.round(price * (1 + random.uniform(0, 1) * 0.01), 8)
             if volume1*price > 5:
                 self.send_order(direction, price=price, volume=volume1, offset=Offset.NONE)
         elif direction == Direction.SHORT:
-            price = np.round(price * (1 - random.uniform(0, 1) * 0.001), 8)
+            price = np.round(price * (1 - random.uniform(0, 1) * 0.01), 8)
             if volume1 * price > 5:
                 self.send_order(direction, price=price, volume=volume1, offset=Offset.NONE)
         else:

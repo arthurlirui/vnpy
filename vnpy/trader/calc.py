@@ -37,3 +37,6 @@ class BarFeature:
         else:
             return spread_vol, total_vol
 
+    def detect_outlier_vol(self, klines=[], low_ratio=0.05, high_ratio=0.95):
+        pass
+

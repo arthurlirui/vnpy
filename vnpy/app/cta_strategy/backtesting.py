@@ -938,6 +938,15 @@ class BacktestingEngine:
         self.days = days
         self.callback = callback
 
+    def load_market_trade(self, vt_symbol: str, callback: Callable):
+        print('load_market_trade in Backtesting')
+
+    def load_account_trade(self, vt_symbol: str, callback: Callable):
+        print('load_account_trade in Backtesting')
+
+    def load_account_data(self, account_type='spot'):
+        print('load_account_data in Backtesting')
+
     def send_order(
         self,
         strategy: CtaTemplate,
