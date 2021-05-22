@@ -560,16 +560,19 @@ class ChaseBear(CtaTemplate):
 
     def stop_loss(self, price, stop_loss_rate: float = 0.90):
         timedelta_long = datetime.timedelta(minutes=360)
-        long_price, long_pos, long_timedelta = self.calc_avg_trade_price(direction=Direction.LONG, timedelta=timedelta_long)
+        cur_vol = self.get_current_position(base=True, volume=True)
+        long_price, long_pos, long_timedelta = self.calc_avg_trade_price(direction=Direction.LONG,
+                                                                         vol=cur_vol,
+                                                                         timedelta=timedelta_long)
 
-        if self.prev_buy_price and price < stop_loss_rate * self.prev_buy_price:
+        if long_price and price < stop_loss_rate * long_price:
             # check 1m kline to determine
             is_stop_loss = self.need_stop_loss(stop_loss_rate=stop_loss_rate)
             if is_stop_loss:
                 #self.write_log(f'stop_loss {datetime.datetime.now(tz=MY_TZ)}')
                 direction = Direction.SHORT
                 # if stop loss, do care position, prob, quota, price, break, risk
-                volume = self.generate_volume(price=price, direction=direction, check_balance=True, check_position=False)
+                volume = self.generate_volume(price=price, direction=direction, check_balance=True, check_position=True)
                 self.generate_order(price=price, volume=volume, direction=direction)
                 #self.send_order(direction=direction, price=price, volume=volume, offset=Offset.NONE)
 
@@ -577,44 +580,49 @@ class ChaseBear(CtaTemplate):
         if self.timer_count % 60 != 0:
             return
         # 1. check holding position time
-        tp_ratio_0_7 = 1.2
+        tp_ratio_0_75 = 1.1
         tp_ratio_0_5 = 1.5
         tp_ratio_0_0 = 2.0
+        tp_ratio_default = 1.05
+        cur_vol = self.get_current_position(base=True, volume=True)
         timedelta = datetime.timedelta(minutes=360)
-        long_price, long_pos, long_timedelta = self.calc_avg_trade_price(direction=Direction.LONG, timedelta=timedelta)
+        long_price, long_pos, long_timedelta = self.calc_avg_trade_price(direction=Direction.LONG,
+                                                                         vol=cur_vol,
+                                                                         timedelta=timedelta)
 
         timedelta_short = datetime.timedelta(minutes=10)
         short_price, short_pos, short_timedelta = self.calc_avg_trade_price(direction=Direction.SHORT, timedelta=timedelta_short)
         if long_timedelta > datetime.timedelta(minutes=30):
             #self.write_log(f'take_profit {datetime.datetime.now(tz=MY_TZ)}')
             direction = Direction.SHORT
-            volume = self.generate_volume(price=price, direction=direction, check_balance=True, check_position=False)
-            self.generate_order(price=price, volume=volume, direction=direction)
-            #self.send_order(direction=direction, price=price, volume=volume, offset=Offset.NONE)
+            if long_price and price > tp_ratio_default * long_price:
+                volume = self.generate_volume(price=price, direction=direction, check_balance=True, check_position=False)
+                self.generate_order(price=price, volume=volume, direction=direction)
         elif long_timedelta > datetime.timedelta(minutes=10):
             cur_position = price * self.get_current_position(base=True, volume=True)
-            if cur_position > 0.75 * self.max_invest:
-                if long_price and price > tp_ratio_0_7 * long_price:
+            if cur_position > 0.75 * self.total_invest:
+                if long_price and price > tp_ratio_0_75 * long_price:
                     direction = Direction.SHORT
                     volume = self.generate_volume(price=price, direction=direction, check_balance=True,
                                                   check_position=False)
                     self.generate_order(price=price, volume=volume, direction=direction)
-                    #self.send_order(direction=direction, price=price, volume=volume, offset=Offset.NONE)
-            if cur_position > 0.5 * self.max_invest:
-                if long_price and price > tp_ratio_0_5 * long_price:
+            elif 0.5 * self.total_invest < cur_position < 0.75 * self.total_invest:
+                if long_price and price > tp_ratio_0_75 * long_price and price < tp_ratio_0_5 * long_price:
                     direction = Direction.SHORT
-                    volume = self.generate_volume(price=price, direction=direction, check_balance=True,
-                                                  check_position=False)
+                    volume = self.generate_volume(price=price, direction=direction, check_balance=True, check_position=True)
                     self.generate_order(price=price, volume=volume, direction=direction)
-                    #self.send_order(direction=direction, price=price, volume=volume, offset=Offset.NONE)
-            if cur_position > 0.0 * self.max_invest:
+            elif 0.0 * self.max_invest < cur_position < 0.5 * self.total_invest:
                 if long_price and price > tp_ratio_0_0 * long_price:
                     #self.write_log(f'take_profit {datetime.datetime.now(tz=MY_TZ)}')
                     direction = Direction.SHORT
-                    volume = self.generate_volume(price=price, direction=direction, check_balance=True,
-                                                  check_position=False)
+                    volume = self.generate_volume(price=price, direction=direction, check_balance=True, check_position=True)
                     self.generate_order(price=price, volume=volume, direction=direction)
-                    #self.send_order(direction=direction, price=price, volume=volume, offset=Offset.NONE)
+            else:
+                pass
+        elif long_timedelta > datetime.timedelta(minutes=120):
+            direction = Direction.SHORT
+            volume = self.generate_volume(price=price, direction=direction, check_balance=True, check_position=True)
+            self.generate_order(price=price, volume=volume, direction=direction)
         else:
             pass
 
@@ -645,16 +653,25 @@ class ChaseBear(CtaTemplate):
         mean_vol = np.median(vol_sorted)
         self.mean_vol = mean_vol
         cur_vol = bars1m[-1].volume
+
+        #long_price, long_pos, long_timedelta = self.calc_avg_trade_price(direction=Direction.LONG,
+        #                                                                 timedelta=datetime.timedelta(minutes=10))
+        short_price, short_pos, short_timedelta = self.calc_avg_trade_price(direction=Direction.SHORT,
+                                                                            timedelta=datetime.timedelta(minutes=10))
+
         is_price_break_up = False
         is_volume_increase = False
+        is_recent_sell = False
         is_chase_up = False
         if price > up_line:
             is_price_break_up = True
         if cur_vol > vol_ratio * mean_vol:
             is_volume_increase = True
-        if is_price_break_up and is_volume_increase:
+        if short_pos > 0:
+            is_recent_sell = True
+        if is_price_break_up and is_volume_increase and not is_recent_sell:
             is_chase_up = True
-        print(up_line, cur_vol, vol_ratio*mean_vol)
+        print(up_line, cur_vol, vol_ratio*mean_vol, short_timedelta)
 
         if is_chase_up:
             cur_position = price * self.get_current_position(base=True, volume=True)
