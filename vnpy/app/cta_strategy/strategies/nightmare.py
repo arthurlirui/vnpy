@@ -238,6 +238,9 @@ class Nightmare(CtaTemplate):
         # position update time
         self.update_invest_limit_time = None
 
+        # flag for first time initial parameters
+        self.first_time = True
+
         # kline based features
         self.kline_phase1 = 20
         self.kline_phase2 = 3
@@ -452,9 +455,9 @@ class Nightmare(CtaTemplate):
         price = self.last_trade.price
         self.check_price_break(price=price, direction=Direction.LONG, use_vline=True)
         self.check_price_break(price=price, direction=Direction.SHORT, use_vline=True)
-        self.update_trade_prob(price=price)
+        #self.update_trade_prob(price=price)
         self.make_decision(price=trade.price)
-        self.put_event()
+        #self.put_event()
 
     def calc_pro_buy(self, price: float, price_ref: float, theta: float, global_prob: float, min_p: float=0.01):
         buy_ref_price = (price_ref - price) / (price * theta)
@@ -1040,6 +1043,8 @@ class Nightmare(CtaTemplate):
         cur_vol = self.get_current_position(base=True, volume=True)
         long_price, long_pos, long_timedelta = self.calc_avg_trade_price(direction=Direction.LONG, vol=cur_vol)
         bars = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=Interval.MINUTE)
+        if len(bars) < 100:
+            return
         stop_loss_price = np.min([kl.low_price for kl in bars[-3:]])
 
         if long_price and stop_loss_price < sl_min * long_price:
@@ -1303,18 +1308,34 @@ class Nightmare(CtaTemplate):
             else:
                 self.prev_high_price = None
 
+    def update_vol(self):
+        kline_1m = self.kqg.get_bars(self.vt_symbol, Interval.MINUTE)
+        kltmp = kline_1m[-1000:]
+        if len(kltmp) < 100:
+            return
+        avg_vol = float(np.median([kl.amount for kl in kltmp]))
+        vol_list = self.market_params[self.symbol]['vline_vol_list']
+        tmp = [vol for vol in vol_list if vol > avg_vol * 20]
+        if len(tmp) > 0:
+            self.vol_select = min(tmp)
+        else:
+            self.vol_select = vol_list[-1]
+
     def update_ref_price(self):
         '''update reference price for buy and sell'''
         # 1. choose proper vline to calculate ref price
         kline_1m = self.kqg.get_bars(self.vt_symbol, Interval.MINUTE)
-        kl360 = kline_1m[-20:]
-        avg_vol = float(sum([kl.amount for kl in kl360]) / len(kl360))
+        kltmp = kline_1m[-1000:]
+        if len(kltmp) < 100:
+            return
+        avg_vol = float(np.median([kl.amount for kl in kltmp]))
         vol_list = self.market_params[self.symbol]['vline_vol_list']
-        vol = min([vol for vol in vol_list if avg_vol*20 < vol])
+        vol = min([vol for vol in vol_list if vol > avg_vol*20])
 
         self.vol_select = vol
-        self.buy_price = float(np.round(self.vqg[self.vt_symbol].vq[vol].top_k_price(k=0.05), 4))
-        self.sell_price = float(np.round(self.vqg[self.vt_symbol].vq[vol].top_k_price(k=0.95), 4))
+
+        #self.buy_price = float(np.round(self.vqg[self.vt_symbol].vq[vol].top_k_price(k=0.05), 4))
+        #self.sell_price = float(np.round(self.vqg[self.vt_symbol].vq[vol].top_k_price(k=0.95), 4))
 
     def update_trade_prob(self, price: float):
         # 1. choose proper vline to calculate ref price
@@ -1738,8 +1759,8 @@ class Nightmare(CtaTemplate):
                 self.kqg.update_bar(bar=bar)
 
                 # update kline based features here:
-                if bar.interval == Interval.MINUTE:
-                    self.update_kline_feature(bar=bar, interval=Interval.MINUTE)
+                #if bar.interval == Interval.MINUTE:
+                #    self.update_kline_feature(bar=bar, interval=Interval.MINUTE)
 
             self.trade_buf = []
             self.kline_buf = []
@@ -1777,31 +1798,15 @@ class Nightmare(CtaTemplate):
             else:
                 self.spread_vol2.append(spread_vol2)
         #vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
-        klines = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=interval)
+        #klines = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=interval)
         #print(len(self.spread_vol1), spread_vol1, spread_vol2, klines[-1].open_time, klines[-1].datetime)
 
     def update_variable(self):
         if self.timer_count > 10:
             self.timer_count = int(self.timer_count)
-            self.upper_break_count = int(self.upper_break_count)
-            self.lower_break_count = int(self.lower_break_count)
-            self.buy_prob = float(self.buy_prob)
-            self.sell_prob = float(self.sell_prob)
             self.min_invest = float(self.min_invest)
             self.max_invest = float(self.max_invest)
             self.total_invest = float(self.total_invest)
-            if self.buy_price:
-                self.buy_price = float(self.buy_price)
-            if self.sell_price:
-                self.sell_price = float(self.sell_price)
-            if self.prev_buy_price:
-                self.prev_buy_price = float(self.prev_buy_price)
-            if self.prev_sell_price:
-                self.prev_sell_price = float(self.prev_sell_price)
-            if self.prev_high_price:
-                self.prev_high_price = float(self.prev_high_price)
-            if self.prev_low_price:
-                self.prev_low_price = float(self.prev_low_price)
 
     def on_timer(self):
         '''
@@ -1809,36 +1814,35 @@ class Nightmare(CtaTemplate):
         '''
         if not self.is_data_inited:
             return
-        #self.update_market_status()
-        self.detect_liquidation()
+
+        if self.first_time:
+            self.update_market_trade(time_step=1)
+            self.update_price_gain_speed_vline(num_vline=3, time_step=1)
+            self.update_spread_vol(time_step=10)
+            self.update_spread(time_step=10)
+            self.update_vol()
+            self.detect_liquidation()
+            self.update_invest_limit()
+            self.first_time = False
+
         self.update_market_trade(time_step=1)
         self.update_price_gain_speed_vline(num_vline=3, time_step=1)
         self.update_spread_vol(time_step=10)
         self.update_spread(time_step=10)
+        self.release_trading_quota(timestep=5)
 
-        if self.is_slump or self.is_surge:
-            self.release_trading_quota(timestep=1)
-        else:
-            self.release_trading_quota(timestep=10)
-        self.update_invest_limit()
-
-        #if self.timer_count % 1 == 0 and self.timer_count > 10:
-        #    self.update_market_trade()
-        #    self.update_price_gain_speed_vline(num_vline=3)
         if self.timer_count % 1 == 0 and self.timer_count > 10:
             if self.last_trade:
                 price = self.last_trade.price
-                #self.check_price_break(price=price, direction=Direction.LONG)
-                #self.check_price_break(price=price, direction=Direction.SHORT)
+                self.detect_liquidation()
                 self.make_decision(price=price)
 
         if self.timer_count % 10 == 0 and self.timer_count > 10:
-            self.update_avg_trade_price()
-            #self.update_ref_price()
-            #self.update_high_low_price()
+            pass
 
         if self.timer_count % 60 == 0 and self.timer_count > 10:
             print(datetime.datetime.now(tz=MY_TZ))
+            self.update_vol()
             self.update_break_count()
 
         if self.timer_count % 600 == 0 and self.timer_count > 10:
