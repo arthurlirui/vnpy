@@ -208,7 +208,7 @@ class Nightmare(CtaTemplate):
         # trading speed
         self.trade_speed = -1
         self.trade_gain = -1
-        self.trade_gain_thresh = 100
+        self.trade_gain_thresh = 50
         self.trade_speed_thresh = 10
 
         self.sv_3_0 = 0
@@ -1036,27 +1036,42 @@ class Nightmare(CtaTemplate):
             is_stop_loss = True
         return is_stop_loss
 
-    def stop_loss(self, price, stop_loss_rate: float = 0.95):
-        if self.prev_buy_price and price < stop_loss_rate * self.prev_buy_price:
-            # check 1m kline to determine
-            is_stop_loss = self.need_stop_loss(stop_loss_rate=stop_loss_rate)
-            if is_stop_loss:
-                self.write_log(f'stop_loss {datetime.datetime.now(tz=MY_TZ)}')
-                direction = Direction.SHORT
-                # if stop loss, do care position, prob, quota, price, break, risk
-                volume = self.generate_volume(price=price, direction=direction, check_balance=True, check_position=False)
-                self.generate_order(price=price, volume=volume, direction=direction)
-                self.send_order(direction=direction, price=price, volume=volume, offset=Offset.NONE)
+    def stop_loss(self, price, sl_min: float = 0.99):
+        cur_vol = self.get_current_position(base=True, volume=True)
+        long_price, long_pos, long_timedelta = self.calc_avg_trade_price(direction=Direction.LONG, vol=cur_vol)
+        bars = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=Interval.MINUTE)
+        stop_loss_price = np.min([kl.low_price for kl in bars[-3:]])
 
-    def take_profit(self, price: float, take_profit_ratio: float = 0.3):
-        if self.timer_count % 60 != 0:
-            return
-        if self.prev_buy_price and price > (1+take_profit_ratio)*self.prev_buy_price:
-            #self.write_log(f'take_profit {datetime.datetime.now(tz=MY_TZ)}')
+        if long_price and stop_loss_price < sl_min * long_price:
+            # check 1m kline to determine
             direction = Direction.SHORT
-            volume = self.generate_volume(price=price, direction=direction, check_balance=True, check_position=False)
+            volume = self.generate_volume(price=price, direction=direction, check_balance=True, check_position=True)
             self.generate_order(price=price, volume=volume, direction=direction)
-            self.send_order(direction=direction, price=price, volume=volume, offset=Offset.NONE)
+
+    def take_profit(self, price: float, tp_min=1.01, tp_max=1.05, max_td: datetime.timedelta = datetime.timedelta(minutes=60)):
+        # 1. check holding position time
+        cur_vol = self.get_current_position(base=True, volume=True)
+        release_vol = 0.2 * self.total_invest
+        long_price, long_pos, long_timedelta = self.calc_avg_trade_price(direction=Direction.LONG, vol=cur_vol, timedelta=max_td)
+
+        timedelta_short = datetime.timedelta(minutes=1)
+        short_price, short_pos, short_timedelta = self.calc_avg_trade_price(direction=Direction.SHORT, timedelta=timedelta_short)
+
+        # avoid fast selling
+        if short_pos * short_price > release_vol:
+            return
+
+        if long_price and price > tp_max * long_price:
+            direction = Direction.SHORT
+            volume = self.generate_volume(price=price, direction=direction, check_balance=True, check_position=True)
+            self.generate_order(price=price, volume=volume, direction=direction)
+
+        if long_timedelta > max_td:
+            # self.write_log(f'take_profit {datetime.datetime.now(tz=MY_TZ)}')
+            direction = Direction.SHORT
+            if long_price and price > tp_min * long_price:
+                volume = self.generate_volume(price=price, direction=direction, check_balance=True, check_position=True)
+                self.generate_order(price=price, volume=volume, direction=direction)
 
     def chase_up(self, price: float, price_buy_ratio: float = 1.02):
         '''
@@ -1200,17 +1215,42 @@ class Nightmare(CtaTemplate):
                 self.generate_order(price=price, volume=volume, direction=direction)
                 self.send_order(direction=direction, price=price, volume=volume, offset=Offset.NONE)
 
-    def buy_liquidation(self):
-        bars1m = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=Interval.MINUTE)
-        num_kline = len(bars1m)
-        if num_kline < 300:
-            print('No enough klines')
-            return
-        self.detect_liquidation()
+    def buy_liquidation(self, price: float):
+        if self.has_long_liquidation:
+            # 1. price is in low position: check bars
+            cur_position = price * self.get_current_position(base=True, volume=True)
+            tmp_invest = self.total_invest * 0.1
+            td = datetime.timedelta(minutes=1)
+            long_price, long_pos, long_timedelta = self.calc_avg_trade_price(direction=Direction.LONG,
+                                                                             vol=cur_position,
+                                                                             timedelta=td)
+            if long_pos > tmp_invest:
+                return
+            #cur_position = self.balance_info.data[self.base_currency].available * price
+            if cur_position < self.total_invest:
+                #self.write_log(f'Chasing up {datetime.datetime.now(tz=MY_TZ)}')
+                direction = Direction.LONG
+                volume = self.generate_volume(price=price, direction=direction, check_position=True)
+                self.generate_order(price=price, volume=volume, direction=direction)
+                #self.send_order(direction=direction, price=price, volume=volume, offset=Offset.NONE)
 
-
-    def sell_double_high(self):
-        pass
+    def sell_double_high(self, price: float):
+        if self.has_short_liquidation:
+            # 1. price is in low position: check bars
+            cur_position = price * self.get_current_position(base=True, volume=True)
+            tmp_invest = self.total_invest * 0.1
+            td = datetime.timedelta(minutes=1)
+            short_price, short_pos, short_timedelta = self.calc_avg_trade_price(direction=Direction.SHORT,
+                                                                                vol=cur_position,
+                                                                                timedelta=td)
+            if short_pos > tmp_invest:
+                return
+            # cur_position = self.balance_info.data[self.base_currency].available * price
+            if cur_position > self.min_invest:
+                # self.write_log(f'Chasing up {datetime.datetime.now(tz=MY_TZ)}')
+                direction = Direction.SHORT
+                volume = self.generate_volume(price=price, direction=direction, check_position=True)
+                self.generate_order(price=price, volume=volume, direction=direction)
 
     def make_decision(self, price: float):
         ''''''
@@ -1218,9 +1258,13 @@ class Nightmare(CtaTemplate):
         # 1. swing trading
         if False:
             self.swing_trading(price=price)
-        # 2. buy at liquidation
 
+        # 2. buy at liquidation
+        if True:
+            self.buy_liquidation(price=price)
         # 3. sell at high volume and high price
+        if True:
+            self.sell_double_high(price=price)
 
         # 2. chasing up
         if False:
@@ -1231,11 +1275,11 @@ class Nightmare(CtaTemplate):
             self.kill_down(price=price)
 
         # 4. stop loss
-        if False:
+        if True:
             self.stop_loss(price=price)
 
         # 5. take profit
-        if False:
+        if True:
             self.take_profit(price=price)
 
     def update_high_low_price(self):
@@ -1638,14 +1682,14 @@ class Nightmare(CtaTemplate):
     def detect_liquidation(self, lasting_thresh=datetime.timedelta(minutes=5)):
         # 1. check price is going down
         is_price_going_down = False
-        if self.sv_3_0 < -1*self.sv_t3 | self.sv_5_0 < -1*self.sv_t5 | self.sv_10_0 < -1*self.sv_t10 | self.sv_20_0 < -1*self.sv_t20:
+        if (self.sv_3_0 < -1*self.sv_t3) | (self.sv_5_0 < -1*self.sv_t5) | (self.sv_10_0 < -1*self.sv_t10) | (self.sv_20_0 < -1*self.sv_t20):
             is_price_going_down = True
 
         is_price_going_up = False
-        if self.sv_3_0 > self.sv_t3 | self.sv_5_0 > self.sv_t5 | self.sv_10_0 > self.sv_t10 | self.sv_20_0 > self.sv_t20:
+        if (self.sv_3_0 > self.sv_t3) | (self.sv_5_0 > self.sv_t5) | (self.sv_10_0 > self.sv_t10) | (self.sv_20_0 > self.sv_t20):
             is_price_going_up = True
 
-        vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
+        #vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
         if is_price_going_down and not is_price_going_up and self.trade_gain < -1*self.trade_gain_thresh and self.trade_speed > self.trade_speed_thresh:
             self.has_long_liquidation = True
             self.long_liquidation_ts = datetime.datetime.now(tz=MY_TZ)
@@ -1734,7 +1778,7 @@ class Nightmare(CtaTemplate):
                 self.spread_vol2.append(spread_vol2)
         #vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
         klines = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=interval)
-        print(len(self.spread_vol1), spread_vol1, spread_vol2, klines[-1].open_time, klines[-1].datetime)
+        #print(len(self.spread_vol1), spread_vol1, spread_vol2, klines[-1].open_time, klines[-1].datetime)
 
     def update_variable(self):
         if self.timer_count > 10:
@@ -1771,6 +1815,7 @@ class Nightmare(CtaTemplate):
         self.update_price_gain_speed_vline(num_vline=3, time_step=1)
         self.update_spread_vol(time_step=10)
         self.update_spread(time_step=10)
+
         if self.is_slump or self.is_surge:
             self.release_trading_quota(timestep=1)
         else:
@@ -1783,8 +1828,8 @@ class Nightmare(CtaTemplate):
         if self.timer_count % 1 == 0 and self.timer_count > 10:
             if self.last_trade:
                 price = self.last_trade.price
-                self.check_price_break(price=price, direction=Direction.LONG)
-                self.check_price_break(price=price, direction=Direction.SHORT)
+                #self.check_price_break(price=price, direction=Direction.LONG)
+                #self.check_price_break(price=price, direction=Direction.SHORT)
                 self.make_decision(price=price)
 
         if self.timer_count % 10 == 0 and self.timer_count > 10:
