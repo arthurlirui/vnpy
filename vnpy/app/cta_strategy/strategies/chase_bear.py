@@ -662,14 +662,17 @@ class ChaseBear(CtaTemplate):
         is_price_break_up = False
         is_volume_increase = False
         is_recent_sell = False
+        is_price_too_high = False
         is_chase_up = False
         if price > up_line:
             is_price_break_up = True
+        if price > 1.07 * up_line:
+            is_price_too_high = True
         if cur_vol > vol_ratio * mean_vol:
             is_volume_increase = True
         if short_pos > 0:
             is_recent_sell = True
-        if is_price_break_up and is_volume_increase and not is_recent_sell:
+        if is_price_break_up and is_volume_increase and not is_price_too_high and not is_recent_sell:
             is_chase_up = True
         print(up_line, cur_vol, vol_ratio*mean_vol, short_timedelta)
 

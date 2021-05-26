@@ -244,7 +244,7 @@ class Nightmare(CtaTemplate):
 
         # sending count
         self.sending_count = 0
-        self.max_sending_count = 9
+        self.max_sending_count = 4
 
         # position update time
         self.update_invest_limit_time = None
@@ -434,7 +434,8 @@ class Nightmare(CtaTemplate):
     def on_tick(self, tick: TickData):
         self.tick_buf.append(tick)
         self.last_tick = tick
-        #print(self.last_tick)
+        print(self.last_tick.ask_price_1, self.last_tick.ask_price_2, self.last_tick.ask_price_3)
+        print(self.last_tick.bid_price_1, self.last_tick.bid_price_2, self.last_tick.bid_price_3)
 
     def on_order_book(self, order_book: OrderBookData):
         #print(order_book)
@@ -588,14 +589,14 @@ class Nightmare(CtaTemplate):
                     volume = np.round(avail_volume, precision)
                 else:
                     volume = np.round(np.min([volume, avail_volume]), precision)
-                print(f'check_balance {direction.value} {volume}')
+                #print(f'check_balance {direction.value} {volume}')
             # 2. check position
             if check_position:
                 #cur_position = self.balance_info.data[self.base_currency].available*price
                 cur_position = self.get_current_position(base=True, available=True)*price
                 if cur_position < self.min_invest:
                     volume = np.round(volume * 0.5, precision)
-                print(f'check_position {direction.value} {volume}')
+                #print(f'check_position {direction.value} {volume}')
         else:
             volume = 0.0
         return volume
@@ -866,7 +867,7 @@ class Nightmare(CtaTemplate):
             ratio_fast_sell = 0.0
         return ratio_fast_sell
 
-    def generate_order(self, price: float, volume: float, direction: Direction, precision: int = 4, min_vol: float = 5.0):
+    def generate_order(self, price: float, volume: float, direction: Direction, precision: int = 4, min_vol: float = 10.0):
         if direction == Direction.LONG:
             if price:
                 price = np.round(price, precision)
@@ -880,9 +881,13 @@ class Nightmare(CtaTemplate):
                     price = np.round(self.last_tick.ask_price_3, precision)
                 else:
                     price = 0
-            if volume * price > min_vol and self.sending_count < self.max_sending_count:
-                self.send_order(direction, price=price, volume=volume, offset=Offset.NONE)
-                self.sending_count += 1
+            if self.sending_count < self.max_sending_count:
+                if volume * price > min_vol:
+                    self.send_order(direction, price=price, volume=volume, offset=Offset.NONE)
+                    self.sending_count += 1
+                else:
+                    self.send_order(direction, price=price, volume=0.001, offset=Offset.NONE)
+                    self.sending_count += 1
         elif direction == Direction.SHORT:
             if price:
                 price = np.round(price, precision)
@@ -896,12 +901,13 @@ class Nightmare(CtaTemplate):
                     price = np.round(self.last_tick.bid_price_3, precision)
                 else:
                     pass
-            if volume * price > min_vol and self.sending_count < self.max_sending_count:
-                self.send_order(direction, price=price, volume=volume, offset=Offset.NONE)
-                self.sending_count += 1
-            else:
-                self.send_order(direction, price=price, volume=0.001, offset=Offset.NONE)
-                self.sending_count += 1
+            if self.sending_count < self.max_sending_count:
+                if volume * price > min_vol:
+                    self.send_order(direction, price=price, volume=volume, offset=Offset.NONE)
+                    self.sending_count += 1
+                else:
+                    self.send_order(direction, price=price, volume=0.001, offset=Offset.NONE)
+                    self.sending_count += 1
         else:
             return
 
@@ -1262,11 +1268,11 @@ class Nightmare(CtaTemplate):
             if long_pos > tmp_invest:
                 return
             #cur_position = self.balance_info.data[self.base_currency].available * price
-            if cur_position < self.max_invest:
+            if cur_position < self.total_invest:
                 #self.write_log(f'Chasing up {datetime.datetime.now(tz=MY_TZ)}')
                 direction = Direction.LONG
                 volume = self.generate_volume(price=price, direction=direction, check_position=True)
-                self.generate_order(price=price, volume=volume, direction=direction)
+                self.generate_order(price=price, volume=volume, direction=direction, min_vol=10)
                 #self.send_order(direction=direction, price=price, volume=volume, offset=Offset.NONE)
 
     def sell_double_high(self, price: float):
@@ -1280,11 +1286,11 @@ class Nightmare(CtaTemplate):
                 print(short_pos)
                 return
             # cur_position = self.balance_info.data[self.base_currency].available * price
-            if cur_position > self.min_invest:
+            if cur_position > 0.01 * self.total_invest:
                 # self.write_log(f'Chasing up {datetime.datetime.now(tz=MY_TZ)}')
                 direction = Direction.SHORT
                 volume = self.generate_volume(price=price, direction=direction, check_position=True)
-                self.generate_order(price=None, volume=volume, direction=direction)
+                self.generate_order(price=None, volume=volume, direction=direction, min_vol=10)
 
     def test_trade(self):
         if self.last_tick:
@@ -1748,12 +1754,12 @@ class Nightmare(CtaTemplate):
 
     def detect_liquidation(self, lasting_thresh=datetime.timedelta(minutes=5)):
         # 1. check price is going down
-        if (self.sv_3_0 < -1*self.sv_t3) & (self.sv_5_0 < -1*self.sv_t5) & ((self.sv_10_0 < -1*self.sv_t10) | (self.sv_20_0 < -1*self.sv_t20)):
+        if (self.sv_3_0 < -1*self.sv_t3) & (self.sv_5_0 < -1*self.sv_t5) & (self.sv_10_0 < -1*self.sv_t10) & (self.sv_20_0 < -1*self.sv_t20):
             self.is_price_going_down = True
         else:
             self.is_price_going_down = False
 
-        if (self.sv_3_0 > self.sv_t3) & (self.sv_5_0 > self.sv_t5) & ((self.sv_10_0 > self.sv_t10) | (self.sv_20_0 > self.sv_t20)):
+        if (self.sv_3_0 > self.sv_t3) & (self.sv_5_0 > self.sv_t5) & (self.sv_10_0 > self.sv_t10) & (self.sv_20_0 > self.sv_t20):
             self.is_price_going_up = True
         else:
             self.is_price_going_up = False
@@ -1790,11 +1796,12 @@ class Nightmare(CtaTemplate):
         else:
             self.is_high_trade_speed = False
 
-        if self.is_price_going_down and not self.is_price_going_up and self.is_high_vol:
+        if self.is_price_going_down and not self.is_price_going_up and self.is_high_vol and self.is_high_trade_speed:
             self.has_long_liquidation = True
             self.long_liquidation_ts = datetime.datetime.now(tz=MY_TZ)
             print('Long Liquidation:', self.long_liquidation_ts)
-        if self.is_price_going_up and not self.is_price_going_down and self.is_high_vol:
+
+        if self.is_price_going_up and not self.is_price_going_down and self.is_high_vol and self.is_high_trade_speed:
             self.has_short_liquidation = True
             self.short_liquidation_ts = datetime.datetime.now(tz=MY_TZ)
             print('Short Liquidation:', self.short_liquidation_ts)
