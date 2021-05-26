@@ -883,10 +883,10 @@ class Nightmare(CtaTemplate):
                     price = 0
             if self.sending_count < self.max_sending_count:
                 if volume * price > min_vol:
-                    self.send_order(direction, price=price, volume=volume, offset=Offset.NONE)
+                    self.send_order(direction, price=price, volume=volume, offset=Offset.NONE, type=OrderType.IOC)
                     self.sending_count += 1
                 else:
-                    self.send_order(direction, price=price, volume=0.001, offset=Offset.NONE)
+                    self.send_order(direction, price=price, volume=0.001, offset=Offset.NONE, type=OrderType.IOC)
                     self.sending_count += 1
         elif direction == Direction.SHORT:
             if price:
@@ -903,11 +903,11 @@ class Nightmare(CtaTemplate):
                     pass
             if self.sending_count < self.max_sending_count:
                 if volume * price > min_vol:
-                    self.send_order(direction, price=price, volume=volume, offset=Offset.NONE)
+                    self.send_order(direction, price=price, volume=volume, offset=Offset.NONE, type=OrderType.IOC)
                     self.sending_count += 1
-                else:
-                    self.send_order(direction, price=price, volume=0.001, offset=Offset.NONE)
-                    self.sending_count += 1
+                #else:
+                #    self.send_order(direction, price=price, volume=0.001, offset=Offset.NONE)
+                #    self.sending_count += 1
         else:
             return
 

@@ -272,7 +272,7 @@ class CtaEngine(BaseEngine):
         if len(strategies) == 0:
             return
 
-        print('process_trade_event:', trade)
+        #print('process_trade_event:', trade)
         # Remove vt_orderid if order is no longer active.
         for strategy in strategies:
             if not strategy.inited:
@@ -284,7 +284,6 @@ class CtaEngine(BaseEngine):
             self.sync_strategy_data(strategy)
             # Update GUI
             self.put_strategy_event(strategy)
-
 
     def process_timer_event(self, event: Event):
         for sn in self.strategies:
@@ -391,8 +390,7 @@ class CtaEngine(BaseEngine):
         for req in req_list:
             req.reference = strategy.strategy_name      # Add strategy name as order reference
 
-            vt_orderid = self.main_engine.send_order(
-                req, contract.gateway_name)
+            vt_orderid = self.main_engine.send_order(req, contract.gateway_name)
 
             # Check if sending order successful
             if not vt_orderid:
@@ -429,6 +427,78 @@ class CtaEngine(BaseEngine):
             price,
             volume,
             OrderType.LIMIT,
+            lock
+        )
+
+    def send_market_order(
+        self,
+        strategy: CtaTemplate,
+        contract: ContractData,
+        direction: Direction,
+        offset: Offset,
+        price: float,
+        volume: float,
+        lock: bool
+    ):
+        """
+        Send a limit order to server.
+        """
+        return self.send_server_order(
+            strategy,
+            contract,
+            direction,
+            offset,
+            price,
+            volume,
+            OrderType.MARKET,
+            lock
+        )
+
+    def send_IOC_order(
+        self,
+        strategy: CtaTemplate,
+        contract: ContractData,
+        direction: Direction,
+        offset: Offset,
+        price: float,
+        volume: float,
+        lock: bool
+    ):
+        """
+        Send a limit order to server.
+        """
+        return self.send_server_order(
+            strategy,
+            contract,
+            direction,
+            offset,
+            price,
+            volume,
+            OrderType.IOC,
+            lock
+        )
+
+    def send_FOK_order(
+        self,
+        strategy: CtaTemplate,
+        contract: ContractData,
+        direction: Direction,
+        offset: Offset,
+        price: float,
+        volume: float,
+        lock: bool
+    ):
+        """
+        Send a limit order to server.
+        """
+        return self.send_server_order(
+            strategy,
+            contract,
+            direction,
+            offset,
+            price,
+            volume,
+            OrderType.FOK,
             lock
         )
 
@@ -537,7 +607,8 @@ class CtaEngine(BaseEngine):
         price: float,
         volume: float,
         stop: bool,
-        lock: bool
+        lock: bool,
+        type: OrderType = OrderType.LIMIT
     ):
         """
         """
@@ -556,7 +627,16 @@ class CtaEngine(BaseEngine):
             else:
                 return self.send_local_stop_order(strategy, direction, offset, price, volume, lock)
         else:
-            return self.send_limit_order(strategy, contract, direction, offset, price, volume, lock)
+            if type == OrderType.LIMIT:
+                return self.send_limit_order(strategy, contract, direction, offset, price, volume, lock)
+            elif type == OrderType.MARKET:
+                return self.send_market_order(strategy, contract, direction, offset, price, volume, lock)
+            elif type == OrderType.IOC:
+                return self.send_IOC_order(strategy, contract, direction, offset, price, volume, lock)
+            elif type == OrderType.FOK:
+                return self.send_FOK_order(strategy, contract, direction, offset, price, volume, lock)
+            else:
+                return self.send_market_order(strategy, contract, direction, offset, price, volume, lock)
 
     def cancel_order(self, strategy: CtaTemplate, vt_orderid: str):
         """

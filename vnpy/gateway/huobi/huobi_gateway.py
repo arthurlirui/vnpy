@@ -70,7 +70,12 @@ ORDERTYPE_VT2HUOBI = {
     (Direction.SHORT, OrderType.MARKET): "sell-market",
     (Direction.LONG, OrderType.LIMIT): "buy-limit",
     (Direction.SHORT, OrderType.LIMIT): "sell-limit",
+    (Direction.LONG, OrderType.FOK): "buy-limit-fok",
+    (Direction.SHORT, OrderType.FOK): "sell-limit-fok",
+    (Direction.LONG, OrderType.IOC): "buy-ioc",
+    (Direction.SHORT, OrderType.IOC): "sell-ioc",
 }
+
 ORDERTYPE_HUOBI2VT = {v: k for k, v in ORDERTYPE_VT2HUOBI.items()}
 
 INTERVAL_VT2HUOBI = {
@@ -1201,6 +1206,26 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
             order_price = float(data['orderPrice'])
             order_size = float(data['orderSize'])
             #order_volume = float(data['remainAmt'])
+            trade_price = data['tradePrice']
+            trade_volume = order_size
+            remain_amount = float(data['remainAmt'])
+            exec_amount = float(data['execAmt'])
+            traded_value = order_price * exec_amount
+        elif 'ioc' in order_type:
+            order_type_vt = OrderType.IOC
+            order_price = float(data['orderPrice'])
+            order_size = float(data['orderSize'])
+            # order_volume = float(data['remainAmt'])
+            trade_price = data['tradePrice']
+            trade_volume = order_size
+            remain_amount = float(data['remainAmt'])
+            exec_amount = float(data['execAmt'])
+            traded_value = order_price * exec_amount
+        elif 'fok' in order_type:
+            order_type_vt = OrderType.FOK
+            order_price = float(data['orderPrice'])
+            order_size = float(data['orderSize'])
+            # order_volume = float(data['remainAmt'])
             trade_price = data['tradePrice']
             trade_volume = order_size
             remain_amount = float(data['remainAmt'])
