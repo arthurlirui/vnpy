@@ -970,8 +970,8 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
         if "data" in packet and not packet["data"]:
             self.gateway.write_log("交易Websocket API登录成功")
             self.subscribe_account_update()
-            req = SubscribeRequest(symbol='bch3lusdt', exchange=Exchange.HUOBI)
-            self.subscribe_order_update(req=req)
+            #rbeq = SubscribeRequest(symbol='bch3lusdt', exchange=Exchange.HUOBI)
+            #self.subscribe_order_update(req=req)
         else:
             msg = packet["message"]
             error_msg = f"交易Websocket API登录失败，原因：{msg}"

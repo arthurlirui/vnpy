@@ -79,7 +79,7 @@ class TickData(BaseData):
         self.vt_symbol = f"{self.symbol}.{self.exchange.value}"
 
     def __str__(self):
-        return '%s P:%.3f V:%.8f %s %s' % (self.symbol, self.last_price, self.last_volume, self.exchange, self.datetime)
+        return '%s P:%.3f V:%.8f Bid:%.8f Ask:%.8f %s %s' % (self.symbol, self.last_price, self.last_volume, self.bid_price_1, self.ask_price_1, self.exchange, self.datetime)
 
 
 class MarketEventData(BaseData):
