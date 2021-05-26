@@ -135,7 +135,8 @@ class CtaEngine(BaseEngine):
         self.event_engine.register(EVENT_TIMER, self.process_timer_event)
         self.event_engine.register(EVENT_ACCOUNT, self.process_account_event)
         self.event_engine.register(EVENT_BALANCE, self.process_balance_event)
-        self.event_engine.register(EVENT_ORDER_BOOK, self.process_order_book_event)
+        if False:
+            self.event_engine.register(EVENT_ORDER_BOOK, self.process_order_book_event)
 
     def init_rqdata(self):
         """
