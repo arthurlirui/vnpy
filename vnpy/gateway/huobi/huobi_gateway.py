@@ -14,6 +14,7 @@ from copy import copy
 from datetime import datetime
 import pytz
 from typing import Dict, List, Any
+import time
 
 from vnpy.api.rest import RestClient, Request
 from vnpy.api.websocket import WebsocketClient
@@ -232,6 +233,8 @@ class HuobiRestApi(RestClient):
         self.accounts = {}  # account_id: account_info
 
         self.order_count = 0
+        self.rate_limit = 20
+        self.rate_limit_expire = 0
 
     def new_orderid(self):
         """"""
@@ -302,11 +305,6 @@ class HuobiRestApi(RestClient):
             if t.account_type == 'spot':
                 self.account_id = t.account_id
 
-        #for accid in self.accounts:
-        #    req = BalanceRequest(account_id=accid, exchange=self.accounts[accid].exchange)
-        #    balance_info = self.query_balance(req=req)
-        #    print(balance_info)
-
     def query_account_trade(self, req: AccountTradeRequest):
         '''
         {'status': 'ok',
@@ -327,7 +325,6 @@ class HuobiRestApi(RestClient):
 
         # Get response from server
         resp = self.request("GET", "/v1/order/history", params=params)
-        #print(resp.json())
         rawdata = resp.json()
         if rawdata['status'] == 'ok':
             data = rawdata['data']
@@ -563,9 +560,7 @@ class HuobiRestApi(RestClient):
 
     def send_order(self, req: OrderRequest) -> str:
         """"""
-        huobi_type = ORDERTYPE_VT2HUOBI.get(
-            (req.direction, req.type), ""
-        )
+        huobi_type = ORDERTYPE_VT2HUOBI.get((req.direction, req.type), "")
 
         orderid = self.new_orderid()
         order = req.create_order_data(orderid, self.gateway_name)
@@ -581,15 +576,16 @@ class HuobiRestApi(RestClient):
             "client-order-id": orderid
         }
 
-        self.add_request(
-            method="POST",
-            path="/v1/order/orders/place",
-            callback=self.on_send_order,
-            data=data,
-            extra=order,
-            on_error=self.on_send_order_error,
-            on_failed=self.on_send_order_failed
-        )
+        if self.rate_limit > 3 or time.time() > self.rate_limit_expire/1000.0:
+            self.add_request(
+                method="POST",
+                path="/v1/order/orders/place",
+                callback=self.on_send_order,
+                data=data,
+                extra=order,
+                on_error=self.on_send_order_error,
+                on_failed=self.on_send_order_failed
+            )
 
         self.gateway.on_order(order)
         return order.vt_orderid
@@ -739,6 +735,10 @@ class HuobiRestApi(RestClient):
     def on_send_order(self, data: dict, request: Request) -> None:
         """"""
         order = request.extra
+
+        #print(request.headers)
+        #self.rate_limit = request.headers['X-HB-RateLimit-Requests-Remain']
+        #self.rate_limit_expire = request.headers['X-HB-RateLimit-Requests-Expire']
 
         if self.check_error(data, "委托"):
             order.status = Status.REJECTED
@@ -994,6 +994,8 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
             self.on_order(packet["data"])
         elif "accounts" in ch:
             self.on_account(packet["data"])
+        else:
+            pass
 
     def on_balance(self, data: dict) -> None:
         pass
@@ -1090,6 +1092,7 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
         'orderStatus': 'canceled', 'eventType': 'cancellation',
          'symbol': 'bch3lusdt', 'type': 'sell-limit'}
         '''
+        #print(data)
         symbol = data['symbol']
         time_in_s = data['lastActTime'] / 1000.0
         order_time = generate_datetime(time_in_s, tzinfo=MY_TZ)
@@ -1111,8 +1114,13 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
         elif 'market' in order_type:
             order_value = float(data['orderValue'])
             order_size = order_value / order_price
+        elif 'ioc' in order_type:
+            order_size = float(data['orderSize'])
+            order_value = order_size * order_price
         else:
-            pass
+            order_size = float(data['orderSize'])
+            order_value = order_size * order_price
+
         od = OrderData(gateway_name=self.gateway_name,
                        symbol=symbol,
                        exchange=Exchange.HUOBI,
@@ -1152,7 +1160,7 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
             order_price = float(data['orderPrice'])
             order_size = float(data['orderSize'])
             order_value = order_size * order_price
-        if 'market' in order_type:
+        elif 'market' in order_type:
             order_type_vt = OrderType.MARKET
             if 'buy' in order_type:
                 order_value = float(data['orderValue'])
@@ -1160,6 +1168,15 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
                 order_size = float(data['orderSize'])
             order_price = 0
             #order_size = order_value / order_price
+        elif 'ioc' in order_type:
+            order_price = float(data['orderPrice'])
+            order_size = float(data['orderSize'])
+            order_value = order_size * order_price
+        else:
+            print(data)
+            order_price = float(data['orderPrice'])
+            order_size = float(data['orderSize'])
+            order_value = order_size * order_price
 
         od = OrderData(gateway_name=self.gateway_name,
                        symbol=symbol,
