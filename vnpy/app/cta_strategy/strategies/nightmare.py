@@ -58,6 +58,8 @@ class Nightmare(CtaTemplate):
     trade_amount = 20
     global_prob = 0.5
     max_break_count = 4
+    has_short_liquidation = False
+    has_long_liquidation = False
     parameters = ['base_currency', 'quote_currency', 'exchange', 'vline_vol',
                   'total_invest', 'trade_amount', 'global_prob', 'max_break_count',
                   'trade_gain_thresh', 'trade_speed_thresh',
@@ -245,6 +247,11 @@ class Nightmare(CtaTemplate):
         # sending count
         self.sending_count = 0
         self.max_sending_count = 4
+
+        # buying or selling volume
+        self.short_term_trading_vol = 0.1 * self.max_sending_count * self.total_invest
+        self.cur_buy_vol = 0
+        self.cur_sell_vol = 0
 
         # position update time
         self.update_invest_limit_time = None
@@ -885,9 +892,6 @@ class Nightmare(CtaTemplate):
                 if volume * price > min_vol:
                     self.send_order(direction, price=price, volume=volume, offset=Offset.NONE, type=OrderType.IOC)
                     self.sending_count += 1
-                else:
-                    self.send_order(direction, price=price, volume=0.001, offset=Offset.NONE, type=OrderType.IOC)
-                    self.sending_count += 1
         elif direction == Direction.SHORT:
             if price:
                 price = np.round(price, precision)
@@ -905,9 +909,6 @@ class Nightmare(CtaTemplate):
                 if volume * price > min_vol:
                     self.send_order(direction, price=price, volume=volume, offset=Offset.NONE, type=OrderType.IOC)
                     self.sending_count += 1
-                #else:
-                #    self.send_order(direction, price=price, volume=0.001, offset=Offset.NONE)
-                #    self.sending_count += 1
         else:
             return
 
@@ -1086,30 +1087,30 @@ class Nightmare(CtaTemplate):
             volume = self.generate_volume(price=price, direction=direction, check_balance=True, check_position=True)
             self.generate_order(price=price, volume=volume, direction=direction)
 
-    def take_profit(self, price: float, tp_min=1.01, tp_max=1.05, max_td: datetime.timedelta = datetime.timedelta(minutes=60)):
-        # 1. check holding position time
-        cur_vol = self.get_current_position(base=True, volume=True)
-        release_vol = 0.2 * self.total_invest
-        long_price, long_pos, long_timedelta = self.calc_avg_trade_price(direction=Direction.LONG, vol=cur_vol, timedelta=max_td)
+    def quick_sell(self, price: float, tp_min=1.01, td_quick: datetime.timedelta = datetime.timedelta(minutes=20)):
+        '''
+        1. quick sell if has profit
+        '''
+        long_price, long_pos, long_timedelta = self.calc_avg_trade_price(direction=Direction.LONG, timedelta=td_quick)
 
-        timedelta_short = datetime.timedelta(minutes=1)
-        short_price, short_pos, short_timedelta = self.calc_avg_trade_price(direction=Direction.SHORT, timedelta=timedelta_short)
-
-        # avoid fast selling
-        if short_pos * short_price > release_vol:
-            return
-
-        if long_price and price > tp_max * long_price:
+        # 1. if current price is higher than previous buy price and close to make deal datetime
+        if price > tp_min * long_price and long_pos > 0.0:
             direction = Direction.SHORT
             volume = self.generate_volume(price=price, direction=direction, check_balance=True, check_position=True)
-            self.generate_order(price=price, volume=volume, direction=direction)
+            self.generate_order(price=None, volume=volume, direction=direction)
 
-        if long_timedelta > max_td:
-            # self.write_log(f'take_profit {datetime.datetime.now(tz=MY_TZ)}')
+    def take_profit(self, price: float, take_profit_ratio=1.10):
+        ''''''
+        cur_vol = self.get_current_position(base=True, volume=True)
+        long_price, long_pos, long_timedelta = self.calc_avg_trade_price(direction=Direction.LONG,
+                                                                         vol=cur_vol,
+                                                                         timedelta=datetime.timedelta(minutes=360))
+
+        # 1. if current price is higher than previous buy price and close to make deal datetime
+        if long_price > 0 and long_price > 0.5 * price and price > take_profit_ratio * long_price and long_pos > 0.0:
             direction = Direction.SHORT
-            if long_price and price > tp_min * long_price:
-                volume = self.generate_volume(price=price, direction=direction, check_balance=True, check_position=True)
-                self.generate_order(price=price, volume=volume, direction=direction)
+            volume = self.generate_volume(price=price, direction=direction, check_balance=True, check_position=True)
+            self.generate_order(price=None, volume=volume, direction=direction)
 
     def chase_up(self, price: float, price_buy_ratio: float = 1.02):
         '''
@@ -1257,44 +1258,36 @@ class Nightmare(CtaTemplate):
                 #self.send_order(direction=direction, price=price, volume=volume, offset=Offset.NONE)
 
     def buy_liquidation(self, price: float):
-        if self.has_long_liquidation:
+        if self.has_long_liquidation and not self.first_time:
+            direction = Direction.LONG
             # 1. price is in low position: check bars
             cur_position = price * self.get_current_position(base=True, available=True)
-            tmp_invest = self.total_invest * 0.1
-            td = datetime.timedelta(minutes=1)
-            long_price, long_pos, long_timedelta = self.calc_avg_trade_price(direction=Direction.LONG,
-                                                                             vol=cur_position,
-                                                                             timedelta=td)
-            if long_pos > tmp_invest:
-                return
-            #cur_position = self.balance_info.data[self.base_currency].available * price
-            if cur_position < self.total_invest:
-                #self.write_log(f'Chasing up {datetime.datetime.now(tz=MY_TZ)}')
-                direction = Direction.LONG
+            if cur_position < self.max_invest and self.cur_buy_vol < self.short_term_trading_vol:
                 volume = self.generate_volume(price=price, direction=direction, check_position=True)
-                self.generate_order(price=price, volume=volume, direction=direction, min_vol=10)
-                #self.send_order(direction=direction, price=price, volume=volume, offset=Offset.NONE)
+                self.generate_order(price=None, volume=volume, direction=direction, min_vol=10)
+                self.cur_buy_vol += volume * price
 
     def sell_double_high(self, price: float):
-        if self.has_short_liquidation:
+        if self.has_short_liquidation and not self.first_time:
             # 1. price is in low position: check bars
-            cur_position = price * self.get_current_position(base=True, available=True)
-            tmp_invest = self.total_invest * 0.2
-            td = datetime.timedelta(minutes=1)
-            short_price, short_pos, short_timedelta = self.calc_avg_trade_price(direction=Direction.SHORT, timedelta=td)
-            if short_pos > tmp_invest:
-                print(short_pos)
-                return
+            # cur_position = price * self.get_current_position(base=True, available=True)
+            # tmp_invest = self.total_invest * 0.2
+            # td = datetime.timedelta(minutes=1)
+            # short_price, short_pos, short_timedelta = self.calc_avg_trade_price(direction=Direction.SHORT, timedelta=td)
+            # if short_pos > tmp_invest:
+            #     print(short_pos)
+            #     return
             # cur_position = self.balance_info.data[self.base_currency].available * price
-            if cur_position > 0.01 * self.total_invest:
+            if self.cur_sell_vol < self.short_term_trading_vol:
                 # self.write_log(f'Chasing up {datetime.datetime.now(tz=MY_TZ)}')
                 direction = Direction.SHORT
                 volume = self.generate_volume(price=price, direction=direction, check_position=True)
                 self.generate_order(price=None, volume=volume, direction=direction, min_vol=10)
+                self.cur_sell_vol += volume * price
 
     def test_trade(self):
         if self.last_tick:
-            if random.uniform(0, 1) < 0.5:
+            if random.uniform(0, 1) < 0.5 and True:
                 volume = self.generate_volume(price=self.last_tick.ask_price_1, direction=Direction.LONG, check_position=True)
                 self.generate_order(price=self.last_tick.ask_price_1, volume=volume, direction=Direction.LONG)
             else:
@@ -1305,12 +1298,7 @@ class Nightmare(CtaTemplate):
 
     def make_decision(self, price: float):
         ''''''
-        vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
-        # 1. swing trading
-        if False:
-            self.swing_trading(price=price)
-
-        # 2. buy at liquidation
+        # 1. buy at liquidation
         if True:
             self.buy_liquidation(price=price)
 
@@ -1322,13 +1310,8 @@ class Nightmare(CtaTemplate):
         if True:
             self.sell_double_high(price=price)
 
-        # 2. chasing up
-        if False:
-            self.chase_up(price=price)
-
-        # 3. killing down
-        if False:
-            self.kill_down(price=price)
+        if True:
+            self.quick_sell(price=price, tp_min=1.01, td_quick=datetime.timedelta(minutes=20))
 
         # 4. stop loss
         if True:
@@ -1372,6 +1355,9 @@ class Nightmare(CtaTemplate):
             self.vol_select = min(tmp)
         else:
             self.vol_select = vol_list[-1]
+
+        self.cur_buy_vol = 0
+        self.cur_sell_vol = 0
 
     def update_ref_price(self):
         '''update reference price for buy and sell'''
@@ -1815,6 +1801,7 @@ class Nightmare(CtaTemplate):
         else:
             self.has_long_liquidation = False
             self.long_liquidation_ts = None
+
         if self.short_liquidation_ts:
             if dt_now - self.short_liquidation_ts > lasting_thresh:
                 self.has_short_liquidation = False
@@ -1913,6 +1900,7 @@ class Nightmare(CtaTemplate):
 
         if self.first_time:
             self.update_market_trade(time_step=1)
+            self.update_invest_limit()
             #self.update_price_gain_speed_vline(num_vline=3, time_step=1)
             self.update_spread_vol(time_step=10)
             self.update_spread(time_step=10)
@@ -1935,7 +1923,7 @@ class Nightmare(CtaTemplate):
                 self.make_decision(price=price)
 
         if self.timer_count % 10 == 0 and self.timer_count > 10:
-            if self.test_count < 5:
+            if self.test_count < 3:
                 self.test_trade()
                 #self.test_count += 1
 
@@ -1944,12 +1932,16 @@ class Nightmare(CtaTemplate):
             self.update_vol()
             self.update_break_count()
 
-        if self.timer_count % 600 == 0 and self.timer_count > 10:
+        if self.timer_count % 60 == 0 and self.timer_count > 10:
             #self.update_invest_position()
             self.update_invest_limit()
+            now = datetime.datetime.now(tz=MY_TZ)
+            if now - self.last_trade.datetime > datetime.timedelta(minutes=10):
+                self.trading = False
 
         if self.timer_count % 3600 == 0 and self.timer_count > 10:
-            self.cancel_all()
+            #self.cancel_all()
+            pass
 
         self.timer_count += 1
         self.update_variable()
