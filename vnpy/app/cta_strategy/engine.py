@@ -175,7 +175,6 @@ class CtaEngine(BaseEngine):
 
     def process_account_event(self, event: Event):
         accdata = event.data
-        #print('pcs', accdata)
         for vt_symbol in self.symbol_strategy_map:
             strategies = self.symbol_strategy_map[vt_symbol]
             for strategy in strategies:
@@ -866,8 +865,7 @@ class CtaEngine(BaseEngine):
         # Subscribe market data
         contract = self.main_engine.get_contract(strategy.vt_symbol)
         if contract:
-            req = SubscribeRequest(
-                symbol=contract.symbol, exchange=contract.exchange)
+            req = SubscribeRequest(symbol=contract.symbol, exchange=contract.exchange)
             self.main_engine.subscribe(req, contract.gateway_name)
         else:
             self.write_log(f"行情订阅失败，找不到合约{strategy.vt_symbol}", strategy)

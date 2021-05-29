@@ -106,7 +106,7 @@ HUOBI2INTERVAL_VT = {
 }
 
 CHINA_TZ = pytz.timezone("Asia/Shanghai")
-SAUDI_TZ = pytz.timezone("Asia/Qatar")
+SAUDI_TZ = pytz.timezone("Asia/Riyadh")
 Singapore_TZ = pytz.timezone("Asia/Singapore")
 MY_TZ = SAUDI_TZ
 
@@ -886,6 +886,9 @@ class HuobiWebsocketApiBase(WebsocketClient):
     def on_packet(self, packet: dict):
         """"""
         # print("on packet", packet)
+        #if "ts" in packet:
+        #    self.data_ts = packet["ts"]
+
         if "ping" in packet:
             req = {"pong": packet["ping"]}
             self.send_packet(req)
@@ -975,8 +978,6 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
         if "data" in packet and not packet["data"]:
             self.gateway.write_log("交易Websocket API登录成功")
             self.subscribe_account_update()
-            #rbeq = SubscribeRequest(symbol='bch3lusdt', exchange=Exchange.HUOBI)
-            #self.subscribe_order_update(req=req)
         else:
             msg = packet["message"]
             error_msg = f"交易Websocket API登录失败，原因：{msg}"
@@ -1027,39 +1028,6 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
             if 'available' in data:
                 available = float(data['available'])
                 ad.available = available
-        #print(ad)
-        # if not change_type:
-        #     balance = float(data["balance"])
-        #     if data["available"]:
-        #         frozen = balance - float(data["available"])
-        #     else:
-        #         frozen = 0.0
-        #     currency_balance[currency] = balance
-        # elif "place" in change_type:
-        #     if "available" not in data:
-        #         return
-        #     balance = currency_balance[currency]
-        #     frozen = balance - float(data["available"])
-        # else:
-        #     frozen = 0.0
-        #     if "balance" in data:
-        #         balance = float(data["balance"])
-        #     else:
-        #         balance = float(data["available"])
-        #     currency_balance[currency] = balance
-        #
-        # account = AccountData(
-        #     exchange=Exchange.HUOBI,
-        #     account_id=accound_id,
-        #     accountid=currency,
-        #     currency=currency,
-        #     account_type=account_type,
-        #     account_subtype=None,
-        #     account_state=None,
-        #     balance=balance,
-        #     frozen=frozen,
-        #     gateway_name=self.gateway_name,
-        # )
         self.gateway.on_account(ad)
 
     def parse_trigger(self, data):
@@ -1451,6 +1419,7 @@ class HuobiDataWebsocketApi(HuobiWebsocketApiBase):
 
     def on_data(self, packet: dict) -> None:
         """"""
+        #print(packet)
         channel = packet.get("ch", None)
         if channel:
             if "depth.step" in channel:
@@ -1559,12 +1528,12 @@ class HuobiDataWebsocketApi(HuobiWebsocketApiBase):
         symbol = data['ch'].split('.')[1]
         market_trade = self.trades[symbol]
         trade_data = data['tick']['data']
-        #print(trade_data)
+        #print(data)
         for td in trade_data:
             price = td['price']
             volume = td['amount']
             tradeid = td['tradeId']
-            market_trade.datetime = generate_datetime(td["ts"] / 1000)
+            market_trade.datetime = generate_datetime(td["ts"] / 1000, tzinfo=MY_TZ)
             market_trade.price = price
             market_trade.volume = volume
             market_trade.tradeid = tradeid
