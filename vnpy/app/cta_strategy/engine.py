@@ -617,8 +617,12 @@ class CtaEngine(BaseEngine):
             return ""
 
         # Round order price and volume to nearest incremental value
-        price = round_to(price, contract.pricetick)
-        volume = round_to(volume, contract.min_volume)
+        if type == OrderType.MARKET:
+            price = 0
+            volume = volume
+        else:
+            price = round_to(price, contract.pricetick)
+            volume = round_to(volume, contract.min_volume)
 
         if stop:
             if contract.stop_supported:

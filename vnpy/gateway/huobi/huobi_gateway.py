@@ -108,7 +108,7 @@ HUOBI2INTERVAL_VT = {
 CHINA_TZ = pytz.timezone("Asia/Shanghai")
 SAUDI_TZ = pytz.timezone("Asia/Riyadh")
 Singapore_TZ = pytz.timezone("Asia/Singapore")
-MY_TZ = SAUDI_TZ
+MY_TZ = None
 
 huobi_symbols: set = set()
 symbol_name_map: Dict[str, str] = {}
@@ -350,7 +350,8 @@ class HuobiRestApi(RestClient):
                     price = round(float(d['price']), 8)
                     volume = round(float(d['field-amount']), 8)
 
-                dt = generate_datetime(timestamp=d['created-at'] / 1000.0, tzinfo=MY_TZ)
+                #dt = generate_datetime(timestamp=d['created-at'] / 1000.0, tzinfo=MY_TZ)
+                dt = generate_datetime(timestamp=d['created-at'] / 1000.0)
                 # offset = Offset.NONE
                 trade = TradeData(symbol=symbol,
                                   exchange=req.exchange,
@@ -484,7 +485,8 @@ class HuobiRestApi(RestClient):
                         direction = Direction.SHORT
                     price = round(float(d['price']), 8)
                     volume = round(float(d['amount']), 8)
-                    dt = generate_datetime(timestamp=d['ts']/1000.0, tzinfo=MY_TZ)
+                    #dt = generate_datetime(timestamp=d['ts']/1000.0, tzinfo=MY_TZ)
+                    dt = generate_datetime(timestamp=d['ts'] / 1000.0)
                     #offset = Offset.NONE
                     trade = TradeData(symbol=symbol,
                                       exchange=req.exchange,
@@ -572,20 +574,20 @@ class HuobiRestApi(RestClient):
             "symbol": req.symbol,
             "type": huobi_type,
             "price": str(req.price),
-            "source": "api",
+            "source": "spot-api",
             "client-order-id": orderid
         }
 
-        if self.rate_limit > 3 or time.time() > self.rate_limit_expire/1000.0:
-            self.add_request(
-                method="POST",
-                path="/v1/order/orders/place",
-                callback=self.on_send_order,
-                data=data,
-                extra=order,
-                on_error=self.on_send_order_error,
-                on_failed=self.on_send_order_failed
-            )
+        #if self.rate_limit > 3 or time.time() > self.rate_limit_expire/1000.0:
+        self.add_request(
+            method="POST",
+            path="/v1/order/orders/place",
+            callback=self.on_send_order,
+            data=data,
+            extra=order,
+            on_error=self.on_send_order_error,
+            on_failed=self.on_send_order_failed
+        )
 
         self.gateway.on_order(order)
         return order.vt_orderid
@@ -975,6 +977,7 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
 
     def on_login(self, packet: dict) -> None:
         """"""
+        print(packet)
         if "data" in packet and not packet["data"]:
             self.gateway.write_log("交易Websocket API登录成功")
             self.subscribe_account_update()
@@ -1044,7 +1047,8 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
         }
         '''
         order_side = data['orderSize']
-        order_time = generate_datetime(data['lastActTime'], tzinfo=MY_TZ)
+        #order_time = generate_datetime(data['lastActTime'], tzinfo=MY_TZ)
+        order_time = generate_datetime(data['lastActTime'])
         order_status = STATUS_HUOBI2VT[data['orderStatus']]
         #print(data)
 
@@ -1063,7 +1067,8 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
         #print(data)
         symbol = data['symbol']
         time_in_s = data['lastActTime'] / 1000.0
-        order_time = generate_datetime(time_in_s, tzinfo=MY_TZ)
+        #order_time = generate_datetime(time_in_s, tzinfo=MY_TZ)
+        order_time = generate_datetime(time_in_s)
         order_status = STATUS_HUOBI2VT[data['orderStatus']]
         order_type = data['type']
         vt_type = ORDERTYPE_HUOBI2VT[data['type']]
@@ -1111,7 +1116,8 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
         order_type = data['type']
         order_status = STATUS_HUOBI2VT[data['orderStatus']]
         time_in_s = data['orderCreateTime']/1000.0
-        order_time = generate_datetime(time_in_s, tzinfo=MY_TZ)
+        #order_time = generate_datetime(time_in_s, tzinfo=MY_TZ)
+        order_time = generate_datetime(time_in_s)
         order_value = 0
         order_size = 0
         order_price = 0
@@ -1176,7 +1182,8 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
         order_status = STATUS_HUOBI2VT[data['orderStatus']]
         order_type = data['type']
         time_in_s = data['tradeTime'] / 1000.0
-        order_time = generate_datetime(time_in_s, tzinfo=MY_TZ)
+        #order_time = generate_datetime(time_in_s, tzinfo=MY_TZ)
+        order_time = generate_datetime(time_in_s)
 
         if 'buy' in order_type:
             direction = Direction.LONG
@@ -1307,15 +1314,18 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
 class HuobiDataWebsocketApi(HuobiWebsocketApiBase):
     """"""
 
+    # default_kline_intervals: List[Interval] = [Interval.MINUTE,
+    #                                            Interval.MINUTE_5,
+    #                                            Interval.MINUTE_30,
+    #                                            Interval.HOUR,
+    #                                            Interval.HOUR_4,
+    #                                            Interval.DAILY,
+    #                                            Interval.WEEKLY,
+    #                                            Interval.MONTHLY,
+    #                                            Interval.YEARLY]
     default_kline_intervals: List[Interval] = [Interval.MINUTE,
-                                               Interval.MINUTE_5,
-                                               Interval.MINUTE_30,
-                                               Interval.HOUR,
-                                               Interval.HOUR_4,
-                                               Interval.DAILY,
-                                               Interval.WEEKLY,
-                                               Interval.MONTHLY,
-                                               Interval.YEARLY]
+                                               Interval.MINUTE_15,
+                                               Interval.HOUR]
 
     def __init__(self, gateway):
         """"""
@@ -1326,13 +1336,7 @@ class HuobiDataWebsocketApi(HuobiWebsocketApiBase):
         self.klines: Dict[str, BarData] = {}
         self.trades: Dict[str, TradeData] = {}
 
-    def connect(
-        self,
-        key: str,
-        secret: str,
-        proxy_host: str,
-        proxy_port: int
-    ) -> None:
+    def connect(self, key: str, secret: str, proxy_host: str, proxy_port: int) -> None:
         """"""
         super().connect(
             key,
@@ -1449,7 +1453,8 @@ class HuobiDataWebsocketApi(HuobiWebsocketApiBase):
         symbol = data["ch"].split(".")[1]
         tick = data['tick']
         ts = data['ts']
-        time = generate_datetime(ts/1000, tzinfo=MY_TZ)
+        #time = generate_datetime(ts/1000, tzinfo=MY_TZ)
+        time = generate_datetime(ts / 1000)
         seq_num = tick['seqNum']
         if 'bids' in tick:
             bids_list = tick['bids']
@@ -1470,7 +1475,8 @@ class HuobiDataWebsocketApi(HuobiWebsocketApiBase):
         symbol = data["ch"].split(".")[1]
         tick = data['tick']
         ts = data['ts']
-        time = generate_datetime(ts/1000, tzinfo=MY_TZ)
+        #time = generate_datetime(ts/1000, tzinfo=MY_TZ)
+        time = generate_datetime(ts / 1000)
         seq_num = tick['seqNum']
         pre_seq_num = tick['prevSeqNum']
         if 'bids' in tick:
@@ -1533,7 +1539,8 @@ class HuobiDataWebsocketApi(HuobiWebsocketApiBase):
             price = td['price']
             volume = td['amount']
             tradeid = td['tradeId']
-            market_trade.datetime = generate_datetime(td["ts"] / 1000, tzinfo=MY_TZ)
+            #market_trade.datetime = generate_datetime(td["ts"] / 1000, tzinfo=MY_TZ)
+            market_trade.datetime = generate_datetime(td["ts"] / 1000)
             market_trade.price = price
             market_trade.volume = volume
             market_trade.tradeid = tradeid
@@ -1655,7 +1662,7 @@ def create_signature_v2(
     return params
 
 
-def generate_datetime(timestamp: float, tzinfo=MY_TZ) -> datetime:
+def generate_datetime(timestamp: float, tzinfo=None) -> datetime:
     """"""
     dt = datetime.fromtimestamp(timestamp)
     dt = dt.replace(tzinfo=tzinfo)

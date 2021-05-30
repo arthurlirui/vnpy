@@ -45,7 +45,7 @@ from vnpy.app.cta_strategy import (
 
 import pytz
 SAUDI_TZ = pytz.timezone("Asia/Riyadh")
-MY_TZ = SAUDI_TZ
+MY_TZ = None
 
 
 class Nightmare(CtaTemplate):
@@ -520,6 +520,7 @@ class Nightmare(CtaTemplate):
 
     def on_trade(self, trade: TradeData):
         if len(self.account_trades) > 0:
+            print(trade, self.account_trades[-1])
             if trade.datetime > self.account_trades[-1].datetime:
                 self.account_trades.append(trade)
             else:
@@ -690,26 +691,10 @@ class Nightmare(CtaTemplate):
         if direction == Direction.LONG:
             if price <= min_price:
                 self.lower_break_count = int(1.0 * self.max_break_count)
-                # if 0.5 < self.pos < 1.0:
-                #     self.lower_break_count = int(1.5 * self.max_break_count)
-                # elif 0.1 <= self.pos < 0.5:
-                #     self.lower_break_count = int(1.0 * self.max_break_count)
-                # elif 0.0 <= self.pos < 0.1:
-                #     self.lower_break_count = int(0.5 * self.max_break_count)
-                # else:
-                #     self.lower_break_count = int(1.0 * self.max_break_count)
                 self.lower_break = True
         elif direction == Direction.SHORT:
             if price >= max_price:
                 self.upper_break_count = int(1.0 * self.max_break_count)
-                # if 0.0 < self.pos < 0.3:
-                #     self.upper_break_count = int(2.0 * self.max_break_count)
-                # elif 0.3 <= self.pos < 0.9:
-                #     self.upper_break_count = int(1.0 * self.max_break_count)
-                # elif 0.9 <= self.pos < 1.0:
-                #     self.upper_break_count = int(1.0 * self.max_break_count)
-                # else:
-                #     self.upper_break_count = int(1.0 * self.max_break_count)
                 self.upper_break = True
         else:
             pass
@@ -891,7 +876,8 @@ class Nightmare(CtaTemplate):
             ratio_fast_sell = 0.0
         return ratio_fast_sell
 
-    def generate_order(self, price: float, volume: float, direction: Direction, precision: int = 4, min_vol: float = 10.0):
+    def generate_order(self, price: float, volume: float, direction: Direction, precision: int = 4,
+                       min_vol: float = 10.0, type=OrderType.LIMIT):
         if direction == Direction.LONG:
             if price:
                 price = np.round(price, precision)
@@ -907,7 +893,13 @@ class Nightmare(CtaTemplate):
                     price = 0
             if self.sending_count < self.max_sending_count:
                 if volume * price > min_vol:
-                    self.send_order(direction, price=price, volume=volume, offset=Offset.NONE, type=OrderType.IOC)
+                    if type == OrderType.LIMIT or type == OrderType.IOC:
+                        self.send_order(direction, price=price, volume=volume, offset=Offset.NONE, type=OrderType.IOC)
+                    elif type == OrderType.MARKET:
+                        #print(np.round(volume*price, 1))
+                        self.send_order(direction, price=0, volume=np.round(volume*price, 1), offset=Offset.NONE, type=OrderType.MARKET)
+                    else:
+                        pass
                     self.sending_count += 1
         elif direction == Direction.SHORT:
             if price:
@@ -924,7 +916,15 @@ class Nightmare(CtaTemplate):
                     pass
             if self.sending_count < self.max_sending_count:
                 if volume * price > min_vol:
-                    self.send_order(direction, price=price, volume=volume, offset=Offset.NONE, type=OrderType.IOC)
+                    #self.send_order(direction, price=price, volume=volume, offset=Offset.NONE, type=OrderType.IOC)
+                    #self.send_order(direction, price=price, volume=np.round(volume*price, 1), offset=Offset.NONE, type=OrderType.MARKET)
+                    if type == OrderType.LIMIT or type == OrderType.IOC:
+                        self.send_order(direction, price=price, volume=volume, offset=Offset.NONE, type=OrderType.IOC)
+                    elif type == OrderType.MARKET:
+                        #print(np.round(volume*price, 1))
+                        self.send_order(direction, price=0, volume=volume, offset=Offset.NONE, type=OrderType.MARKET)
+                    else:
+                        pass
                     self.sending_count += 1
         else:
             return
@@ -958,7 +958,7 @@ class Nightmare(CtaTemplate):
             # check 1m kline to determine
             direction = Direction.SHORT
             volume = self.generate_volume(price=price, direction=direction, check_balance=True, check_position=True)
-            self.generate_order(price=price, volume=volume, direction=direction)
+            self.generate_order(price=None, volume=volume, direction=direction, type=OrderType.IOC)
 
     def sell_quick(self, price: float, tp_min=1.01, td_quick: datetime.timedelta = datetime.timedelta(minutes=20)):
         '''
@@ -971,7 +971,7 @@ class Nightmare(CtaTemplate):
         if cur_position < 0.5 * self.total_invest and price > tp_min * long_price and long_pos > 0.0:
             direction = Direction.SHORT
             volume = self.generate_volume(price=price, direction=direction, check_balance=True, check_position=True)
-            self.generate_order(price=None, volume=volume, direction=direction)
+            self.generate_order(price=None, volume=volume, direction=direction, type=OrderType.IOC)
 
     def take_profit(self, price: float, take_profit_ratio=1.10):
         ''''''
@@ -984,7 +984,7 @@ class Nightmare(CtaTemplate):
         if long_price > 0 and long_price > 0.5 * price and price > take_profit_ratio * long_price and long_pos > 0.0:
             direction = Direction.SHORT
             volume = self.generate_volume(price=price, direction=direction, check_balance=True, check_position=True)
-            self.generate_order(price=None, volume=volume, direction=direction)
+            self.generate_order(price=None, volume=volume, direction=direction, type=OrderType.IOC)
 
     def chase_up(self, price: float, price_buy_ratio: float = 1.02):
         '''
@@ -1087,7 +1087,7 @@ class Nightmare(CtaTemplate):
             cur_position = price * self.get_current_position(base=True, available=True)
             if cur_position < self.max_invest and self.cur_buy_vol < self.short_term_trading_vol:
                 volume = self.generate_volume(price=price, direction=direction, check_position=True)
-                self.generate_order(price=None, volume=volume, direction=direction, min_vol=10)
+                self.generate_order(price=None, volume=volume, direction=direction, min_vol=10, type=OrderType.MARKET)
                 self.cur_buy_vol += volume * price
 
     def sell_soar(self, price: float):
@@ -1095,7 +1095,7 @@ class Nightmare(CtaTemplate):
             if self.cur_sell_vol < self.short_term_trading_vol:
                 direction = Direction.SHORT
                 volume = self.generate_volume(price=price, direction=direction, check_position=True)
-                self.generate_order(price=None, volume=volume, direction=direction, min_vol=10)
+                self.generate_order(price=None, volume=volume, direction=direction, min_vol=10, type=OrderType.MARKET)
                 self.cur_sell_vol += volume * price
 
     def slow_sell(self, price: float, max_ratio: float = 0.7):
@@ -1104,7 +1104,7 @@ class Nightmare(CtaTemplate):
         if cur_position > max_ratio * self.total_invest and self.has_slow_sell_quota:
             if self.pos > 0.95:
                 volume = self.generate_volume(price=price, direction=direction, check_position=True)
-                self.generate_order(price=None, volume=volume, direction=direction, min_vol=10)
+                self.generate_order(price=None, volume=volume, direction=direction, min_vol=10, type=OrderType.LIMIT)
                 self.has_slow_sell_quota = False
 
     def slow_suck(self, price: float, min_ratio: float = 0.3):
@@ -1116,19 +1116,19 @@ class Nightmare(CtaTemplate):
             min_price = np.min([vl.close_price for vl in vlines[-100:]])
             if price < min_price or self.pos < 0.1:
                 volume = self.generate_volume(price=price, direction=direction, check_position=True)
-                self.generate_order(price=None, volume=volume, direction=direction, min_vol=10)
+                self.generate_order(price=None, volume=volume, direction=direction, min_vol=10, type=OrderType.IOC)
                 self.has_slow_suck_quota = False
 
     def test_trade(self):
         if self.last_tick and self.last_tick.bid_price_1 > 0 and self.last_tick.ask_price_1 > 0:
             if random.uniform(0, 1) < 0.5 and True:
-                volume = self.generate_volume(price=self.last_tick.ask_price_1, direction=Direction.LONG,
-                                              check_position=True)
-                self.generate_order(price=self.last_tick.ask_price_1, volume=volume, direction=Direction.LONG)
+                volume = self.generate_volume(price=self.last_tick.ask_price_1, direction=Direction.LONG, check_position=True)
+                self.generate_order(price=None, volume=volume, direction=Direction.LONG,
+                                    type=OrderType.MARKET)
             else:
-                volume = self.generate_volume(price=self.last_tick.bid_price_1, direction=Direction.SHORT,
-                                              check_position=True)
-                self.generate_order(price=self.last_tick.bid_price_1, volume=volume, direction=Direction.SHORT)
+                volume = self.generate_volume(price=self.last_tick.bid_price_1, direction=Direction.SHORT, check_position=True)
+                self.generate_order(price=None, volume=volume, direction=Direction.SHORT,
+                                    type=OrderType.MARKET)
             self.test_count += 1
 
     def make_decision(self, price: float):
@@ -1769,19 +1769,21 @@ class Nightmare(CtaTemplate):
 
         if self.timer_count % 10 == 0 and self.timer_count > 10:
             # if no market trade, re-subscribe
-            dt_now = datetime.datetime.now()
-            dt_trade = self.last_trade.datetime.replace(tzinfo=None)
-            td = dt_now - dt_trade
-            #print(td, dt_now, dt_trade)
-            if td > datetime.timedelta(minutes=1):
-                self.re_connect(filepath='/home/lir0b/.vntrader', gateway_name=self.exchange)
-                contract = self.cta_engine.main_engine.get_contract(self.vt_symbol)
-                if contract:
-                    req = SubscribeRequest(symbol=contract.symbol, exchange=contract.exchange)
-                    self.cta_engine.main_engine.subscribe(req, contract.gateway_name)
-                    self.write_log(f"行情订阅{self.vt_symbol}")
-                else:
-                    self.write_log(f"行情订阅失败，找不到合约{self.vt_symbol}")
+            if False:
+                dt_now = datetime.datetime.now()
+                dt_trade = self.last_trade.datetime.replace(tzinfo=None)
+                td = dt_now - dt_trade
+                print(td, dt_now, dt_trade)
+                if td > datetime.timedelta(minutes=1):
+                    self.re_connect(filepath='/home/lir0b/.vntrader', gateway_name=self.exchange)
+                    contract = self.cta_engine.main_engine.get_contract(self.vt_symbol)
+                    if contract:
+                        req = SubscribeRequest(symbol=contract.symbol, exchange=contract.exchange)
+                        self.cta_engine.main_engine.subscribe(req, contract.gateway_name)
+                        self.write_log(f"行情订阅{self.vt_symbol}")
+                        self.subscribe_quota = False
+                    else:
+                        self.write_log(f"行情订阅失败，找不到合约{self.vt_symbol}")
 
             if self.test_count < 3:
                 self.test_trade()
