@@ -168,8 +168,7 @@ class HuobiGateway(BaseGateway):
         else:
             proxy_port = 0
 
-        self.rest_api.connect(key, secret, session_number,
-                              proxy_host, proxy_port)
+        self.rest_api.connect(key, secret, session_number, proxy_host, proxy_port)
         self.trade_ws_api.connect(key, secret, proxy_host, proxy_port)
         self.market_ws_api.connect(key, secret, proxy_host, proxy_port)
 
@@ -1350,6 +1349,15 @@ class HuobiDataWebsocketApi(HuobiWebsocketApiBase):
         """"""
         self.gateway.write_log("行情Websocket API连接成功")
 
+    def on_disconnected(self) -> None:
+        """"""
+        self.gateway.write_log("行情Websocket API失去连接")
+        self.gateway.connect(setting=self.gateway.default_setting)
+        for symbol in self.klines:
+            self.gateway.write_log(f"Subscribe {symbol}")
+            req = SubscribeRequest(symbol=symbol, exchange='HUOBI')
+            self.gateway.subscribe(req=req)
+
     def subscribe(self, req: SubscribeRequest) -> None:
         """"""
         symbol = req.symbol
@@ -1382,18 +1390,12 @@ class HuobiDataWebsocketApi(HuobiWebsocketApiBase):
 
         # Subscribe to market depth update
         self.req_id += 1
-        req = {
-            "sub": f"market.{symbol}.depth.step0",
-            "id": str(self.req_id)
-        }
+        req = {"sub": f"market.{symbol}.depth.step0", "id": str(self.req_id)}
         self.send_packet(req)
 
         # Subscribe to market detail update
         self.req_id += 1
-        req = {
-            "sub": f"market.{symbol}.detail",
-            "id": str(self.req_id)
-        }
+        req = {"sub": f"market.{symbol}.detail", "id": str(self.req_id)}
         self.send_packet(req)
 
         # Subscribe to kline 1min, 5min, 15min, 30min, 60min, 4hour, 1day, 1mon, 1week, 1year
