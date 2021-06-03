@@ -201,7 +201,7 @@ class WebsocketClient:
 
                         # ws object is closed when recv function is blocking
                         if not text:
-                            self._disconnect()
+                            #self._disconnect()
                             continue
 
                         self._record_last_received_text(text)
