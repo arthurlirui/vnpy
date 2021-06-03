@@ -139,7 +139,7 @@ class HuobiGateway(BaseGateway):
         self.rest_api = HuobiRestApi(self)
         self.trade_ws_api = HuobiTradeWebsocketApi(self)
         self.market_ws_api = HuobiDataWebsocketApi(self)
-
+        self.setting = self.default_setting
         self.orders: Dict[str, OrderData] = {}
 
     def get_market_status(self):
@@ -162,7 +162,7 @@ class HuobiGateway(BaseGateway):
         session_number = setting["会话数"]
         proxy_host = setting["代理地址"]
         proxy_port = setting["代理端口"]
-
+        self.setting = setting
         if proxy_port.isdigit():
             proxy_port = int(proxy_port)
         else:
@@ -849,6 +849,8 @@ class HuobiWebsocketApiBase(WebsocketClient):
         self.sign_host = host
         self.path = path
 
+        #print(self.gateway.setting)
+
         self.init(url, proxy_host, proxy_port)
         self.start()
 
@@ -861,7 +863,7 @@ class HuobiWebsocketApiBase(WebsocketClient):
             self.path,
             self.secret
         )
-
+        print(params)
         req = {
             "action": "req",
             "ch": "auth",
@@ -1352,10 +1354,12 @@ class HuobiDataWebsocketApi(HuobiWebsocketApiBase):
     def on_disconnected(self) -> None:
         """"""
         self.gateway.write_log("行情Websocket API失去连接")
-        self.gateway.connect(setting=self.gateway.default_setting)
+        #self.gateway.stop()
+        self.login()
+        self.gateway.connect(setting=self.gateway.setting)
         for symbol in self.klines:
             self.gateway.write_log(f"Subscribe {symbol}")
-            req = SubscribeRequest(symbol=symbol, exchange='HUOBI')
+            req = SubscribeRequest(symbol=symbol, exchange=Exchange.HUOBI)
             self.gateway.subscribe(req=req)
 
     def subscribe(self, req: SubscribeRequest) -> None:
