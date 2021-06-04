@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from logging import INFO
 import pandas as pd
-
+from termcolor import colored
 from .constant import Direction, Exchange, Interval, Offset, Status, Product, OptionType, OrderType, MarketEvent
 import numpy as np
 
@@ -403,6 +403,8 @@ class VlineData(BaseData):
     close_time: datetime = None
 
     volume: float = 0.0
+    buy_volume: float = 0.0
+    sell_volume: float = 0.0
     open_price: float = None
     high_price: float = None
     low_price: float = None
@@ -422,6 +424,9 @@ class VlineData(BaseData):
             self.avg_price = (self.avg_price * self.volume + other.avg_price * other.volume) / (self.volume+other.volume)
 
             self.volume += other.volume
+            self.buy_volume += other.buy_volume
+            self.sell_volume += other.sell_volume
+
             if self.open_time < other.open_time and self.close_time < other.close_time:
                 self.open_price = self.open_price
                 self.close_price = other.close_price
@@ -440,6 +445,13 @@ class VlineData(BaseData):
         self.close_time = tick.datetime
 
         self.volume = tick.last_volume
+        if tick.direction == Direction.LONG:
+            self.buy_volume = tick.last_volume
+        elif tick.direction == Direction.SHORT:
+            self.sell_volume = tick.last_volume
+        else:
+            pass
+
         self.avg_price = tick.last_price
         self.open_price = tick.last_price
         self.close_price = tick.last_price
@@ -456,6 +468,12 @@ class VlineData(BaseData):
         self.close_time = trade.datetime
 
         self.volume = trade.volume
+        if trade.direction == Direction.LONG:
+            self.buy_volume = trade.volume
+        elif trade.direction == Direction.SHORT:
+            self.sell_volume = trade.volume
+        else:
+            pass
         self.avg_price = trade.price
         self.open_price = trade.price
         self.close_price = trade.price
@@ -474,6 +492,9 @@ class VlineData(BaseData):
         self.close_time = vline.open_time
 
         self.volume = vline.volume
+        self.buy_volume = vline.buy_volume
+        self.sell_volume = vline.sell_volume
+
         self.avg_price = vline.avg_price
         self.open_price = vline.open_price
         self.close_price = vline.close_price
@@ -495,6 +516,12 @@ class VlineData(BaseData):
                 sum_vol_price = sum_vol_price + tick.last_price * tick.last_volume
 
                 self.volume = self.volume + tick.last_volume
+                if tick.direction == Direction.LONG:
+                    self.buy_volume = self.buy_volume + tick.last_volume
+                elif tick.direction == Direction.SHORT:
+                    self.sell_volume = self.sell_volume + tick.last_volume
+                else:
+                    pass
 
                 self.avg_price = sum_vol_price / self.volume
 
@@ -520,7 +547,14 @@ class VlineData(BaseData):
                 self.close_time = trade.datetime
                 sum_vol_price = self.avg_price * self.volume
                 sum_vol_price = sum_vol_price + trade.price * trade.volume
+
                 self.volume = self.volume + trade.volume
+                if trade.direction == Direction.LONG:
+                    self.buy_volume = self.buy_volume + trade.volume
+                elif trade.direction == Direction.SHORT:
+                    self.sell_volume = self.sell_volume + trade.volume
+                else:
+                    pass
 
                 self.avg_price = sum_vol_price / self.volume
 
@@ -554,12 +588,10 @@ class VlineData(BaseData):
         return False
 
     def __str__(self):
-        return '%s P:%.3f O:%.3f C:%.3f H:%.3f L:%.3f V:%.8f %s OT:%s CT:%s' % (self.symbol, self.avg_price,
-                                                                                self.open_price, self.close_price,
-                                                                                self.high_price, self.low_price,
-                                                                                self.volume,
-                                                                                self.close_time - self.open_time,
-                                                                                self.open_time, self.close_time)
+        return '%s P:%.3f O:%.3f C:%.3f H:%.3f L:%.3f V:%.8f BV:%.8f SV:%.8f %s OT:%s CT:%s' % (self.symbol, self.avg_price, self.open_price, self.close_price,
+                                                                                                self.high_price, self.low_price,
+                                                                                                self.volume, self.buy_volume, self.sell_volume,
+                                                                                                self.close_time - self.open_time, self.open_time, self.close_time)
 
 
 @dataclass

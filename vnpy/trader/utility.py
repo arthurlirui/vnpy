@@ -393,6 +393,7 @@ class MarketEventGenerator:
             self.hover.event = MarketEvent.HOVER
         return is_event
 
+
 class VlineGenerator:
     '''
     For
@@ -587,12 +588,10 @@ class VlineQueueGenerator:
 
     def init_by_trade(self, trade: TradeData):
         for vol in self.vol_list:
-            #if vol <= self.init_thresh_vol:
             self.vq[vol].init_trade(trade=trade)
 
     def init_by_kline(self, bar: BarData):
         for vol in self.vol_list:
-            #if vol > self.init_thresh_vol:
             self.vq[vol].init_kline(bar=bar)
 
 
