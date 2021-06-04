@@ -451,10 +451,11 @@ class Nightmare(CtaTemplate):
         self.trade_buf.append(trade)
         self.last_trade = trade
         price = self.last_trade.price
-        if trade.direction == Direction.LONG:
-            print(colored(trade, color='green'))
-        else:
-            print(colored(trade, color='red'))
+        if False:
+            if trade.direction == Direction.LONG:
+                print(colored(trade, color='green'))
+            else:
+                print(colored(trade, color='red'))
 
 
         self.check_price_break(price=price, direction=Direction.LONG, use_vline=True)
@@ -484,6 +485,11 @@ class Nightmare(CtaTemplate):
         if not self.is_data_inited:
             return
         # update price break signal
+        if True:
+            if vline.buy_volume > vline.sell_volume:
+                print(colored(vline, color='green'))
+            else:
+                print(colored(vline, color='red'))
         #vol = self.market_params[self.symbol]['vline_vol']
         #vlines = self.vg[self.vt_symbol].vlines[vol]
         #print(vol, vline)
@@ -1203,6 +1209,18 @@ class Nightmare(CtaTemplate):
         self.cur_buy_vol = 0
         self.cur_sell_vol = 0
 
+        self.buy_vol_1m = 0
+        self.buy_vol_5m = 0
+        self.buy_vol_15m = 0
+        self.sell_vol_1m = 0
+        self.sell_vol_5m = 0
+        self.sell_vol_15m = 0
+
+        # update buyer and seller volume in real time
+        vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
+        for vl in reversed(vlines):
+            pass
+
     def update_ref_price(self):
         '''update reference price for buy and sell'''
         # 1. choose proper vline to calculate ref price
@@ -1736,8 +1754,10 @@ class Nightmare(CtaTemplate):
             self.total_invest = float(self.total_invest)
             self.pos = float(np.round(self.pos, 3))
             self.median_vol = float(np.round(self.median_vol, 2))
-            self.stop_loss_price = float(np.round(self.stop_loss_price, 2))
-            self.take_profit_price = float(np.round(self.take_profit_price, 2))
+            if self.stop_loss_price:
+                self.stop_loss_price = float(np.round(self.stop_loss_price, 2))
+            if self.take_profit_price:
+                self.take_profit_price = float(np.round(self.take_profit_price, 2))
 
     def on_timer(self):
         '''
