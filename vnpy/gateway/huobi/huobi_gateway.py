@@ -976,6 +976,17 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
         self.gateway.write_log("交易Websocket API连接成功")
         self.login()
 
+    def on_disconnected(self) -> None:
+        """"""
+        self.gateway.write_log("交易Websocket API失去连接")
+        self.gateway.close()
+        self.login()
+        self.connect(key=self.key, secret=self.secret, proxy_host=self.proxy_host, proxy_port=self.proxy_port)
+        for symbol in self.klines:
+            self.gateway.write_log(f"Subscribe {symbol}")
+            req = SubscribeRequest(symbol=symbol, exchange=Exchange.HUOBI)
+            self.subscribe(req=req)
+
     def on_login(self, packet: dict) -> None:
         """"""
         print(packet)
@@ -1354,9 +1365,11 @@ class HuobiDataWebsocketApi(HuobiWebsocketApiBase):
     def on_disconnected(self) -> None:
         """"""
         self.gateway.write_log("行情Websocket API失去连接")
-        #self.gateway.stop()
+        self.gateway.close()
         self.login()
-        self.gateway.connect(setting=self.gateway.setting)
+        #self.gateway.connect(setting=self.gateway.setting)
+        #setting = self.gateway.setting
+        self.connect(key=self.key, secret=self.secret, proxy_host=self.proxy_host, proxy_port=self.proxy_port)
         for symbol in self.klines:
             self.gateway.write_log(f"Subscribe {symbol}")
             req = SubscribeRequest(symbol=symbol, exchange=Exchange.HUOBI)
