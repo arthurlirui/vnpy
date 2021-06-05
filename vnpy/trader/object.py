@@ -9,6 +9,7 @@ import pandas as pd
 from termcolor import colored
 from .constant import Direction, Exchange, Interval, Offset, Status, Product, OptionType, OrderType, MarketEvent
 import numpy as np
+#from .calc import BarFeature, VlineFeature
 
 ACTIVE_STATUSES = set([Status.SUBMITTING, Status.NOTTRADED, Status.PARTTRADED])
 
@@ -82,41 +83,45 @@ class TickData(BaseData):
         return '%s P:%.3f V:%.8f Bid:%.8f Ask:%.8f %s %s' % (self.symbol, self.last_price, self.last_volume, self.bid_price_1, self.ask_price_1, self.exchange, self.datetime)
 
 
-class MarketEventData(BaseData):
-    def __init__(self, symbol: str = None,
-                 exchange: Exchange = None,
-                 gateway_name: str = None,
-                 open_time: datetime = None,
-                 close_time: datetime = None):
-        self.symbol = symbol
-        self.exchange = exchange
-        self.gateway_name = gateway_name
-        self.open_time = open_time
-        self.close_time = close_time
+class MarketEventData:
+    def __init__(self):
+        self.event_type: MarketEvent = MarketEvent.NONE
+        self.event_datetime = None
 
-        # default event is None
-        self.event: MarketEvent = None
-
-    def init_by_vlines(self, vlines: list = []):
-        if len(vlines) > 0:
-            self.symbol = vlines[0].symbol
-            self.exchange = vlines[0].exchange
-            self.gateway_name = vlines[0].gateway_name
-            self.open_time = vlines[0].open_time
-            self.close_time = vlines[-1].close_time
-
-    def is_empty(self):
-        if not self.event and not self.open_time and not self.close_time:
-            return True
-        else:
-            return False
-
-    def __str__(self):
-        if self.is_empty():
-            return None
-        else:
-            return '%s %s %s %s %s' % (self.event.value, self.symbol, self.exchange.value,
-                                       self.open_time, self.close_time)
+# class MarketEventData(BaseData):
+#     def __init__(self, symbol: str = None,
+#                  exchange: Exchange = None,
+#                  gateway_name: str = None,
+#                  open_time: datetime = None,
+#                  close_time: datetime = None):
+#         self.symbol = symbol
+#         self.exchange = exchange
+#         self.gateway_name = gateway_name
+#         self.open_time = open_time
+#         self.close_time = close_time
+#
+#         # default event is None
+#         self.event: MarketEvent = None
+#
+#     def init_by_vlines(self, vlines: list = []):
+#         if len(vlines) > 0:
+#             self.symbol = vlines[0].symbol
+#             self.exchange = vlines[0].exchange
+#             self.gateway_name = vlines[0].gateway_name
+#             self.open_time = vlines[0].open_time
+#             self.close_time = vlines[-1].close_time
+#
+#     def is_empty(self):
+#         if not self.event and not self.open_time and not self.close_time:
+#             return True
+#         else:
+#             return False
+#
+#     def __str__(self):
+#         if self.is_empty():
+#             return None
+#         else:
+#             return '%s %s %s %s %s' % (self.event.value, self.symbol, self.exchange.value, self.open_time, self.close_time)
 
 
 class DistData(BaseData):

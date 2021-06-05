@@ -60,6 +60,8 @@ class WebsocketClient:
         self._last_sent_text = None
         self._last_received_text = None
 
+        self.count = 0
+
     def init(self,
              host: str,
              proxy_host: str = "",
@@ -200,7 +202,8 @@ class WebsocketClient:
                         text = ws.recv()
 
                         # ws object is closed when recv function is blocking
-                        if not text:
+                        self.count += 1
+                        if not text or self.count % 100 == 5:
                             self._disconnect()
                             continue
 
@@ -214,6 +217,7 @@ class WebsocketClient:
 
                         self._log('recv data: %s', data)
                         self.on_packet(data)
+
                 # ws is closed before recv function is called
                 # For socket.error, see Issue #1608
                 except (

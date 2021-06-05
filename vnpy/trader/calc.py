@@ -40,3 +40,8 @@ class BarFeature:
     def detect_outlier_vol(self, klines=[], low_ratio=0.05, high_ratio=0.95):
         pass
 
+class VlineFeature:
+    def __init__(self):
+        pass
+
+

@@ -184,28 +184,32 @@ class MarketEventGenerator:
         '''
         # event list
         self.on_event = on_event
-        self.market_event_list = []
-        self.last_event = MarketEventData()
 
-        # parameters for calculating market event
+        self.events = {}
 
-        # market gain symbol
-        self.gain = MarketEventData()
-        self.climb = MarketEventData()
-        self.surge = MarketEventData()
-        self.inflow = MarketEventData()
 
-        # market hover
-        self.hover = MarketEventData()
-
-        # market slip symbol
-        self.slip = MarketEventData()
-        self.retreat = MarketEventData()
-        self.slump = MarketEventData()
-        self.outflow = MarketEventData()
-
-        self.top_divergence = MarketEventData()
-        self.bottom_divergence = MarketEventData()
+        # self.market_event_list = []
+        # self.last_event = MarketEventData()
+        #
+        # # parameters for calculating market event
+        #
+        # # market gain symbol
+        # self.gain = MarketEventData()
+        # self.climb = MarketEventData()
+        # self.surge = MarketEventData()
+        # self.inflow = MarketEventData()
+        #
+        # # market hover
+        # self.hover = MarketEventData()
+        #
+        # # market slip symbol
+        # self.slip = MarketEventData()
+        # self.retreat = MarketEventData()
+        # self.slump = MarketEventData()
+        # self.outflow = MarketEventData()
+        #
+        # self.top_divergence = MarketEventData()
+        # self.bottom_divergence = MarketEventData()
 
         # self.event_func_list = [(self.gain, self.update_gain),
         #                         (self.slip, self.update_slip),
@@ -218,21 +222,28 @@ class MarketEventGenerator:
         #                         (self.hover, self.update_hover),
         #                         (self.top_divergence, self.update_top_divergence),
         #                         (self.bottom_divergence, self.update_bottom_divergence)]
-        self.event_list = [self.gain, self.slip,
-                           self.climb, self.retreat,
-                           self.surge, self.slump,
-                           self.inflow, self.outflow,
-                           self.hover,
-                           self.top_divergence, self.bottom_divergence]
-        self.func_list = [self.update_gain, self.update_slip,
-                          self.update_climb, self.update_retreat,
-                          self.update_surge, self.update_slump,
-                          self.update_inflow, self.update_outflow,
-                          self.update_hover,
-                          self.update_top_divergence, self.update_bottom_divergence]
+        # self.event_list = [self.gain, self.slip,
+        #                    self.climb, self.retreat,
+        #                    self.surge, self.slump,
+        #                    self.inflow, self.outflow,
+        #                    self.hover,
+        #                    self.top_divergence, self.bottom_divergence]
+        # self.func_list = [self.update_gain, self.update_slip,
+        #                   self.update_climb, self.update_retreat,
+        #                   self.update_surge, self.update_slump,
+        #                   self.update_inflow, self.update_outflow,
+        #                   self.update_hover,
+        #                   self.update_top_divergence, self.update_bottom_divergence]
+        #
+        # self.params = {}
+        # self.update_params(params=self.default_params)
 
-        self.params = {}
-        self.update_params(params=self.default_params)
+    def update_event_data(self, market_event_data: MarketEventData):
+        if market_event_data.event_type in self.events:
+            self.events[market_event_data.event_type].append(market_event_data)
+        else:
+            self.events[market_event_data.event_type] = []
+            self.events[market_event_data.event_type].append(market_event_data)
 
     def update_params(self, params={}):
         for key in params:

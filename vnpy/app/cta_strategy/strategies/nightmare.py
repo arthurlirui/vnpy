@@ -1136,6 +1136,9 @@ class Nightmare(CtaTemplate):
                                     type=OrderType.MARKET)
             self.test_count += 1
 
+        if self.timer_count % 30 == 0:
+            pass
+
     def make_decision(self, price: float):
         ''''''
         # 1. buy at liquidation

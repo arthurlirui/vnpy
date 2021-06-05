@@ -31,7 +31,12 @@ class MarketEvent(Enum):
     TOP_DIVERGENCE = "高位回落"
     BOTTOM_DIVERGENCE = "触底反弹"
 
+    SHORT_LIQUIDATION = "做空爆仓"
+    LONG_LIQUIDATION = "做多爆仓"
+
     HOVER = "水静鹅飞"
+
+    NONE = "NONE"
 
 
 class MarketAction(Enum):

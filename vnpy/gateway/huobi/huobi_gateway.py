@@ -928,6 +928,7 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
         super().__init__(gateway)
 
         self.req_id: int = 0
+        self.symbols = []
 
     def connect(
         self,
@@ -948,6 +949,8 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
     def subscribe(self, req: SubscribeRequest) -> None:
         """"""
         self.req_id += 1
+        if req.symbol not in self.symbols:
+            self.symbols.append(req.symbol)
         req = {
             "action": "sub",
             "ch": f"orders#{req.symbol}"
@@ -979,13 +982,16 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
     def on_disconnected(self) -> None:
         """"""
         self.gateway.write_log("交易Websocket API失去连接")
-        self.gateway.close()
+        #self.gateway.close()
+        self.gateway.trade_ws_api.stop()
+
         self.login()
         self.connect(key=self.key, secret=self.secret, proxy_host=self.proxy_host, proxy_port=self.proxy_port)
-        for symbol in self.klines:
+        for symbol in self.symbols:
             self.gateway.write_log(f"Subscribe {symbol}")
             req = SubscribeRequest(symbol=symbol, exchange=Exchange.HUOBI)
             self.subscribe(req=req)
+        self.subscribe_account_update()
 
     def on_login(self, packet: dict) -> None:
         """"""
@@ -1365,7 +1371,9 @@ class HuobiDataWebsocketApi(HuobiWebsocketApiBase):
     def on_disconnected(self) -> None:
         """"""
         self.gateway.write_log("行情Websocket API失去连接")
-        self.gateway.close()
+
+        self.gateway.market_ws_api.stop()
+
         self.login()
         #self.gateway.connect(setting=self.gateway.setting)
         #setting = self.gateway.setting
@@ -1373,7 +1381,7 @@ class HuobiDataWebsocketApi(HuobiWebsocketApiBase):
         for symbol in self.klines:
             self.gateway.write_log(f"Subscribe {symbol}")
             req = SubscribeRequest(symbol=symbol, exchange=Exchange.HUOBI)
-            self.gateway.subscribe(req=req)
+            self.subscribe(req=req)
 
     def subscribe(self, req: SubscribeRequest) -> None:
         """"""
