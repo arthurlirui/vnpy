@@ -888,10 +888,7 @@ class HuobiWebsocketApiBase(WebsocketClient):
 
     def on_packet(self, packet: dict):
         """"""
-        # print("on packet", packet)
-        #if "ts" in packet:
-        #    self.data_ts = packet["ts"]
-
+        print(packet)
         if "ping" in packet:
             req = {"pong": packet["ping"]}
             self.send_packet(req)
@@ -983,19 +980,21 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
         """"""
         self.gateway.write_log("交易Websocket API失去连接")
         #self.gateway.close()
-        self.gateway.trade_ws_api.stop()
-
+        #self.gateway.trade_ws_api.stop()
         self.login()
         self.connect(key=self.key, secret=self.secret, proxy_host=self.proxy_host, proxy_port=self.proxy_port)
+
         for symbol in self.symbols:
-            self.gateway.write_log(f"Subscribe {symbol}")
+            self.gateway.write_log(f"Trade Subscribe {symbol}")
             req = SubscribeRequest(symbol=symbol, exchange=Exchange.HUOBI)
             self.subscribe(req=req)
         self.subscribe_account_update()
 
+        #self.join()
+
     def on_login(self, packet: dict) -> None:
         """"""
-        print(packet)
+        print('交易', packet)
         if "data" in packet and not packet["data"]:
             self.gateway.write_log("交易Websocket API登录成功")
             self.subscribe_account_update()
@@ -1334,6 +1333,7 @@ class HuobiDataWebsocketApi(HuobiWebsocketApiBase):
 
     # default_kline_intervals: List[Interval] = [Interval.MINUTE,
     #                                            Interval.MINUTE_5,
+    #                                            Interval.MINUTE_15,
     #                                            Interval.MINUTE_30,
     #                                            Interval.HOUR,
     #                                            Interval.HOUR_4,
@@ -1341,9 +1341,7 @@ class HuobiDataWebsocketApi(HuobiWebsocketApiBase):
     #                                            Interval.WEEKLY,
     #                                            Interval.MONTHLY,
     #                                            Interval.YEARLY]
-    default_kline_intervals: List[Interval] = [Interval.MINUTE,
-                                               Interval.MINUTE_15,
-                                               Interval.HOUR]
+    default_kline_intervals: List[Interval] = [Interval.MINUTE, Interval.MINUTE_15]
 
     def __init__(self, gateway):
         """"""
@@ -1356,6 +1354,10 @@ class HuobiDataWebsocketApi(HuobiWebsocketApiBase):
 
     def connect(self, key: str, secret: str, proxy_host: str, proxy_port: int) -> None:
         """"""
+        print(key)
+        print(secret)
+        print(proxy_host)
+        print(proxy_port)
         super().connect(
             key,
             secret,
@@ -1371,17 +1373,31 @@ class HuobiDataWebsocketApi(HuobiWebsocketApiBase):
     def on_disconnected(self) -> None:
         """"""
         self.gateway.write_log("行情Websocket API失去连接")
-
-        self.gateway.market_ws_api.stop()
-
+        print("行情Websocket API失去连接")
+        #self.gateway.market_ws_api.stop()
+        #self.stop()
+        #self.start()
+        #print("connect")
         self.login()
+        self.connect(key=self.key, secret=self.secret, proxy_host=self.proxy_host, proxy_port=self.proxy_port)
+        #print("login")
+
+        for symbol in self.klines:
+            self.gateway.write_log(f"Data Subscribe {symbol}")
+            req = SubscribeRequest(symbol=symbol, exchange=Exchange.HUOBI)
+            #print(req)
+            self.subscribe(req=req)
+        #self.join()
+        #self.start()
+        #self.join()
+
+        #print(self._worker_thread)
+        #print(self._ping_thread)
+
+        #self.start()
+        #self.login()
         #self.gateway.connect(setting=self.gateway.setting)
         #setting = self.gateway.setting
-        self.connect(key=self.key, secret=self.secret, proxy_host=self.proxy_host, proxy_port=self.proxy_port)
-        for symbol in self.klines:
-            self.gateway.write_log(f"Subscribe {symbol}")
-            req = SubscribeRequest(symbol=symbol, exchange=Exchange.HUOBI)
-            self.subscribe(req=req)
 
     def subscribe(self, req: SubscribeRequest) -> None:
         """"""
@@ -1416,22 +1432,26 @@ class HuobiDataWebsocketApi(HuobiWebsocketApiBase):
         # Subscribe to market depth update
         self.req_id += 1
         req = {"sub": f"market.{symbol}.depth.step0", "id": str(self.req_id)}
+        print(req)
         self.send_packet(req)
 
         # Subscribe to market detail update
         self.req_id += 1
         req = {"sub": f"market.{symbol}.detail", "id": str(self.req_id)}
+        print(req)
         self.send_packet(req)
 
         # Subscribe to kline 1min, 5min, 15min, 30min, 60min, 4hour, 1day, 1mon, 1week, 1year
         for ii in self.default_kline_intervals:
             self.req_id += 1
             req = {"sub": f"market.{symbol}.kline.{INTERVAL_VT2HUOBI[ii]}", "id": str(self.req_id)}
+            print(req)
             self.send_packet(req)
 
         # subscribe market trades
         self.req_id += 1
         req = {"sub": f"market.{symbol}.trade.detail", "id": str(self.req_id)}
+        print(req)
         self.send_packet(req)
 
         # subscribe mbp market data
@@ -1439,6 +1459,7 @@ class HuobiDataWebsocketApi(HuobiWebsocketApiBase):
         self.req_id += 1
         levels = 150
         req = {"sub": f"market.{symbol}.mbp.{levels}", "id": str(self.req_id)}
+        print(req)
         self.send_packet(req)
 
         # subscribe mbp
@@ -1446,6 +1467,7 @@ class HuobiDataWebsocketApi(HuobiWebsocketApiBase):
         self.req_id += 1
         levels = 20
         req = {"sub": f"market.{symbol}.mbp.refresh.{levels}", "id": str(self.req_id)}
+        print(req)
         self.send_packet(req)
 
     def on_data(self, packet: dict) -> None:

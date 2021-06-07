@@ -8,7 +8,6 @@ from datetime import datetime
 from threading import Lock, Thread
 from time import sleep
 from typing import Optional
-
 import websocket
 
 from vnpy.trader.utility import get_file_logger
@@ -203,8 +202,10 @@ class WebsocketClient:
 
                         # ws object is closed when recv function is blocking
                         self.count += 1
-                        if not text or self.count % 100 == 5:
+                        if not text or (self.count % 5000 == 2000 and self.count < 20000):
+                        #if not text:
                             self._disconnect()
+                            #sleep(10)
                             continue
 
                         self._record_last_received_text(text)

@@ -879,6 +879,16 @@ class CtaEngine(BaseEngine):
         self.put_strategy_event(strategy)
         self.write_log(f"{strategy_name}初始化完成")
 
+    def re_connect(self, strategy_name: str):
+        strategy = self.strategies[strategy_name]
+        # Subscribe market data
+        contract = self.main_engine.get_contract(strategy.vt_symbol)
+        if contract:
+            req = SubscribeRequest(symbol=contract.symbol, exchange=contract.exchange)
+            self.main_engine.subscribe(req, contract.gateway_name)
+        else:
+            self.write_log(f"行情订阅失败，找不到合约{strategy.vt_symbol}", strategy)
+
     def start_strategy(self, strategy_name: str):
         """
         Start a strategy.
