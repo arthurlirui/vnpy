@@ -202,8 +202,8 @@ class WebsocketClient:
 
                         # ws object is closed when recv function is blocking
                         self.count += 1
-                        if not text or (self.count % 5000 == 2000 and self.count < 20000):
-                        #if not text:
+                        #if not text or (self.count % 5000 == 2000 and self.count < 20000):
+                        if not text:
                             self._disconnect()
                             #sleep(10)
                             continue

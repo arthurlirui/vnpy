@@ -44,6 +44,8 @@ from vnpy.app.cta_strategy import (
     ArrayManager,
 )
 
+from vnpy.trader.calc import VlineFeature
+
 import pytz
 SAUDI_TZ = pytz.timezone("Asia/Riyadh")
 MY_TZ = None
@@ -133,6 +135,11 @@ class Nightmare(CtaTemplate):
         self.vg = {}
         self.init_vline_generator()
         self.kqg = BarQueueGenerator()
+
+        # market event generator
+        self.meg = MarketEventGenerator(on_event=self.on_market_event)
+
+
         self.is_data_inited = False
 
         self.last_tick = None
@@ -421,6 +428,9 @@ class Nightmare(CtaTemplate):
         #print(self.last_tick.ask_price_1, self.last_tick.ask_price_2, self.last_tick.ask_price_3)
         #print(self.last_tick.bid_price_1, self.last_tick.bid_price_2, self.last_tick.bid_price_3)
 
+    def on_market_event(self, med: MarketEventData):
+        print(med)
+
     def on_order_book(self, order_book: OrderBookData):
         #print(order_book)
         if False:
@@ -607,6 +617,15 @@ class Nightmare(CtaTemplate):
         else:
             volume = 0.0
         return volume
+
+    def calc_market_event_feature(self):
+        pass
+
+    def calc_short_liquidation(self):
+        pass
+
+    def calc_long_liquidation(self):
+        pass
 
     def check_probability(self, direction: Direction):
         ratio_prob = 0.0
@@ -931,10 +950,6 @@ class Nightmare(CtaTemplate):
         if count >= stop_loss_count:
             is_stop_loss = True
         return is_stop_loss
-
-    def re_connect(self, filepath: str, gateway_name: str):
-        setting = load_json(os.path.join(filepath, f'connect_{gateway_name.lower()}.json'))
-        self.cta_engine.main_engine.connect(setting, gateway_name)
 
     def stop_loss(self, price, sl_min: float = 0.99):
         cur_vol = self.get_current_position(base=True, volume=True)
@@ -1480,6 +1495,22 @@ class Nightmare(CtaTemplate):
 
             #self.spread_20_0, self.spread_10_0, self.spread_5_0, self.spread_3_0 = spread_20_0, spread_10_0, spread_5_0, spread_3_0
 
+    def update_spread_vol_vline(self):
+        vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
+        s0 = datetime.timedelta(seconds=0)
+        s15s = datetime.timedelta(seconds=15)
+        s60s = datetime.timedelta(seconds=60)
+        s120s = datetime.timedelta(seconds=120)
+
+        sv_buy_15s = VlineFeature.calc_vol(vlines=vlines, start_td=s0, end_td=s15s, direction=Direction.LONG)
+        sv_buy_60s = VlineFeature.calc_vol(vlines=vlines, start_td=s0, end_td=s60s, direction=Direction.LONG)
+        sv_buy_120s = VlineFeature.calc_vol(vlines=vlines, start_td=s0, end_td=s120s, direction=Direction.LONG)
+        sv_sell_15s = VlineFeature.calc_vol(vlines=vlines, start_td=s0, end_td=s15s, direction=Direction.SHORT)
+        sv_sell_60s = VlineFeature.calc_vol(vlines=vlines, start_td=s0, end_td=s60s, direction=Direction.SHORT)
+        sv_sell_120s = VlineFeature.calc_vol(vlines=vlines, start_td=s0, end_td=s120s, direction=Direction.SHORT)
+        print(f'BUY:{sv_buy_15s} {sv_buy_60s} {sv_buy_120s}')
+        print(f'SELL:{sv_sell_15s} {sv_sell_60s} {sv_sell_120s}')
+
     def update_spread_vol(self, time_step: int = 1):
         if self.timer_count % time_step == 0:
             spread_vol_20_0, total_vol_20_0, avg_spread_vol_20_0 = self.calc_spread_vol_kline(start=-20, end=None,
@@ -1762,6 +1793,16 @@ class Nightmare(CtaTemplate):
             if self.take_profit_price:
                 self.take_profit_price = float(np.round(self.take_profit_price, 2))
 
+    # def re_connect(self, filepath: str, gateway_name: str):
+    #     setting = load_json(os.path.join(filepath, f'connect_{gateway_name.lower()}.json'))
+    #     self.cta_engine.main_engine.connect(setting, gateway_name)
+
+    def re_connect(self, timeout=10):
+        if self.last_trade:
+            datetime_now = datetime.datetime.now()
+            if self.last_trade.datetime+datetime.timedelta(seconds=timeout) < datetime_now:
+                self.cta_engine.re_connect(self.strategy_name)
+
     def on_timer(self):
         '''
         if data init, update market trades for vline queue generator, vline generator
@@ -1781,6 +1822,7 @@ class Nightmare(CtaTemplate):
             self.first_time = False
 
         self.update_market_trade(time_step=1)
+        self.update_spread_vol_vline()
         self.update_price_gain_speed_vline(num_vline=3, time_step=1)
         self.update_spread_vol(time_step=10)
         self.update_spread(time_step=10)
@@ -1792,6 +1834,8 @@ class Nightmare(CtaTemplate):
                 price = self.last_trade.price
                 self.detect_liquidation()
                 self.make_decision(price=price)
+
+            self.re_connect()
 
         if self.timer_count % 10 == 0 and self.timer_count > 10:
             # if no market trade, re-subscribe

@@ -141,6 +141,7 @@ class HuobiGateway(BaseGateway):
         self.market_ws_api = HuobiDataWebsocketApi(self)
         self.setting = self.default_setting
         self.orders: Dict[str, OrderData] = {}
+        self.disconnect_count = 0
 
     def get_market_status(self):
         return self
@@ -832,6 +833,7 @@ class HuobiWebsocketApiBase(WebsocketClient):
         self.secret: str = ""
         self.sign_host: str = ""
         self.path: str = ""
+        self.disconnect_count = 0
 
     def connect(
         self,
@@ -888,7 +890,7 @@ class HuobiWebsocketApiBase(WebsocketClient):
 
     def on_packet(self, packet: dict):
         """"""
-        print(packet)
+        #print(packet)
         if "ping" in packet:
             req = {"pong": packet["ping"]}
             self.send_packet(req)
@@ -981,6 +983,8 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
         self.gateway.write_log("交易Websocket API失去连接")
         #self.gateway.close()
         #self.gateway.trade_ws_api.stop()
+        self.disconnect_count += 1
+        time.sleep(10)
         self.login()
         self.connect(key=self.key, secret=self.secret, proxy_host=self.proxy_host, proxy_port=self.proxy_port)
 
@@ -1341,7 +1345,7 @@ class HuobiDataWebsocketApi(HuobiWebsocketApiBase):
     #                                            Interval.WEEKLY,
     #                                            Interval.MONTHLY,
     #                                            Interval.YEARLY]
-    default_kline_intervals: List[Interval] = [Interval.MINUTE, Interval.MINUTE_15]
+    default_kline_intervals: List[Interval] = [Interval.MINUTE]
 
     def __init__(self, gateway):
         """"""
@@ -1351,6 +1355,7 @@ class HuobiDataWebsocketApi(HuobiWebsocketApiBase):
         self.ticks: Dict[str, TickData] = {}
         self.klines: Dict[str, BarData] = {}
         self.trades: Dict[str, TradeData] = {}
+        #self.disconnect_count = 0
 
     def connect(self, key: str, secret: str, proxy_host: str, proxy_port: int) -> None:
         """"""
@@ -1374,30 +1379,18 @@ class HuobiDataWebsocketApi(HuobiWebsocketApiBase):
         """"""
         self.gateway.write_log("行情Websocket API失去连接")
         print("行情Websocket API失去连接")
-        #self.gateway.market_ws_api.stop()
-        #self.stop()
-        #self.start()
-        #print("connect")
+        self.disconnect_count += 1
+        time.sleep(10*(self.disconnect_count+1))
+        if self.disconnect_count > 5:
+            time.sleep(300)
+            self.disconnect_count = 0
+
         self.login()
         self.connect(key=self.key, secret=self.secret, proxy_host=self.proxy_host, proxy_port=self.proxy_port)
-        #print("login")
-
         for symbol in self.klines:
             self.gateway.write_log(f"Data Subscribe {symbol}")
             req = SubscribeRequest(symbol=symbol, exchange=Exchange.HUOBI)
-            #print(req)
             self.subscribe(req=req)
-        #self.join()
-        #self.start()
-        #self.join()
-
-        #print(self._worker_thread)
-        #print(self._ping_thread)
-
-        #self.start()
-        #self.login()
-        #self.gateway.connect(setting=self.gateway.setting)
-        #setting = self.gateway.setting
 
     def subscribe(self, req: SubscribeRequest) -> None:
         """"""
