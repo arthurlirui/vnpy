@@ -224,7 +224,8 @@ class WebsocketClient:
                 except (
                     websocket.WebSocketConnectionClosedException,
                     websocket.WebSocketBadStatusException,
-                    socket.error
+                    socket.error,
+                    TypeError
                 ):
                     self._disconnect()
 
