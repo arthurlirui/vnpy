@@ -983,8 +983,13 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
         self.gateway.write_log("交易Websocket API失去连接")
         #self.gateway.close()
         #self.gateway.trade_ws_api.stop()
+
         self.disconnect_count += 1
-        time.sleep(10)
+        time.sleep(10 * (self.disconnect_count + 1))
+        if self.disconnect_count > 5:
+            time.sleep(300)
+            self.disconnect_count = 0
+
         self.login()
         self.connect(key=self.key, secret=self.secret, proxy_host=self.proxy_host, proxy_port=self.proxy_port)
 
