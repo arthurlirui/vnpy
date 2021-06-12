@@ -84,9 +84,15 @@ class TickData(BaseData):
 
 
 class MarketEventData:
-    def __init__(self):
-        self.event_type: MarketEvent = MarketEvent.NONE
-        self.event_datetime = None
+    def __init__(self, event_type: MarketEvent = MarketEvent.NONE, event_datetime: datetime = None):
+        self.event_type = event_type
+        if event_datetime is None:
+            self.event_datetime = None
+        else:
+            self.event_datetime = event_datetime
+
+    def __str__(self):
+        return f'{self.event_datetime} {self.event_type.value}'
 
 # class MarketEventData(BaseData):
 #     def __init__(self, symbol: str = None,

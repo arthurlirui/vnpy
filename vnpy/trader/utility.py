@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Callable, Dict, Tuple, Union
 from decimal import Decimal
 from math import floor, ceil
+import datetime
+from datetime import timedelta
 
 import numpy as np
 import talib
@@ -173,10 +175,10 @@ class MarketActionGenerator:
 
 
 class MarketEventGenerator:
-    default_params = {'gain_thresh': 0, 'slip_thresh': 0,
-                      'climb_thresh': 0, 'retreat_thresh': 0,
-                      'climb_count': 5, 'retreat_count': 5,
-                      'hover_count': 5, 'hover_thresh': 10}
+    # default_params = {'gain_thresh': 0, 'slip_thresh': 0,
+    #                   'climb_thresh': 0, 'retreat_thresh': 0,
+    #                   'climb_count': 5, 'retreat_count': 5,
+    #                   'hover_count': 5, 'hover_thresh': 10}
 
     def __init__(self, on_event: Callable):
         '''
@@ -186,9 +188,15 @@ class MarketEventGenerator:
         self.on_event = on_event
         self.events = {}
 
-    def add_event_data(self, market_event_data: MarketEventData):
+    def add_event_data(self, market_event_data: MarketEventData, timeout: timedelta = timedelta(minutes=5)):
         if market_event_data.event_type in self.events:
-            self.events[market_event_data.event_type].append(market_event_data)
+            if len(self.events[market_event_data.event_type]) > 0:
+                latest_event = self.events[market_event_data.event_type][0]
+                datetime_now = datetime.datetime.now()
+                if datetime_now - latest_event.event_datetime > timeout:
+                    self.events[market_event_data.event_type].append(market_event_data)
+            else:
+                self.events[market_event_data.event_type].append(market_event_data)
         else:
             self.events[market_event_data.event_type] = []
             self.events[market_event_data.event_type].append(market_event_data)
@@ -206,14 +214,14 @@ class MarketEventGenerator:
         else:
             return None
 
-    def update_params(self, params={}):
-        for key in params:
-            if key in self.default_params:
-                self.params[key] = params[key]
-
-    def init_event(self, vline: VlineData):
-        for event in self.event_list:
-            event.init_by_vlines(vlines=[vline])
+    # def update_params(self, params={}):
+    #     for key in params:
+    #         if key in self.default_params:
+    #             self.params[key] = params[key]
+    #
+    # def init_event(self, vline: VlineData):
+    #     for event in self.event_list:
+    #         event.init_by_vlines(vlines=[vline])
 
     # def update_event(self, vlines: list = []):
     #     if len(vlines) == 0:
