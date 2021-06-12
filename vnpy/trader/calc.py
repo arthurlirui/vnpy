@@ -27,16 +27,22 @@ class BarFeature:
         '''
         spread_vol = 0
         total_vol = 0
+        avg_spread_vol = 0
+        res_spread_vol = {'spread_vol': spread_vol, 'total_vol': total_vol, 'avg_sv': avg_spread_vol}
         if 0 <= start < end <= len(klines):
             if not klines[0].interval == interval:
-                return spread_vol, total_vol
+                return res_spread_vol
             if start < end:
-                kline_start_end = klines[start: end]
+                kline_start_end = list(reversed(klines))[start: end]
                 spread_vol = np.sum([BarFeature.spread_vol(kl) for kl in kline_start_end])
                 total_vol = np.sum([kl.volume for kl in kline_start_end])
-                return spread_vol, total_vol
+                res_spread_vol['spread_vol'] = spread_vol
+                res_spread_vol['total_vol'] = total_vol
+                if total_vol > 0:
+                    res_spread_vol['avg_sv'] = spread_vol/total_vol
+                return res_spread_vol
         else:
-            return spread_vol, total_vol
+            return res_spread_vol
 
     def detect_outlier_vol(self, klines=[], low_ratio=0.05, high_ratio=0.95):
         pass
@@ -68,9 +74,9 @@ class VlineFeature:
                 else:
                     pass
         else:
-            if not start:
+            if start is None:
                 start = 0
-            if not end:
+            if end is None:
                 end = len(vlines)
             if start < end <= len(vlines) and start <= len(vlines):
                 vlines_start_end = vlines[start: end]
@@ -94,11 +100,11 @@ class VlineFeature:
         spread_vol = 0
         avg_spread_vol = 0
 
-        if start_td and end_td:
+        if start_td is not None and end_td is not None:
             cur_td = timedelta(seconds=0)
             for vl in reversed(vlines):
                 cur_td += vl.close_time - vl.open_time
-                if start_td < cur_td < end_td:
+                if start_td <= cur_td <= end_td:
                     if direction == Direction.LONG:
                         spread_vol += (vl.close_price - vl.open_price) / vl.open_price * vl.buy_volume
                     elif direction == Direction.SHORT:
@@ -115,9 +121,9 @@ class VlineFeature:
                 else:
                     pass
         else:
-            if not start:
+            if start is None:
                 start = 0
-            if not end:
+            if end is None:
                 end = len(vlines)
             if start < end <= len(vlines) and start <= len(vlines):
                 vlines_start_end = vlines[start: end]
@@ -133,8 +139,18 @@ class VlineFeature:
                 total_vol = VlineFeature.calc_vol(vlines=vlines, start=start, end=end, direction=direction)
                 if total_vol > 0:
                     avg_spread_vol = spread_vol / total_vol
-        sv_total = (spread_vol, total_vol, avg_spread_vol)
+        #sv_total = (spread_vol, total_vol, avg_spread_vol)
+        sv_total = {'spread_vol': spread_vol, 'total_vol': total_vol, 'avg_sv': avg_spread_vol}
         return sv_total
+
+    @staticmethod
+    def calc_vol_speed(vlines=[], start_td=timedelta(seconds=0), end_td=timedelta(seconds=10), direction=Direction.NONE):
+        start_td = start_td
+        end_td = end_td
+        td = end_td - start_td
+        total_vol = VlineFeature.calc_vol(vlines=vlines, start_td=start_td, end_td=end_td, direction=direction)
+        speed = total_vol / td.total_seconds()
+        return speed
 
     @staticmethod
     def calc_short_liquidation(vlines=[]) -> MarketEventData:
