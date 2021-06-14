@@ -187,19 +187,26 @@ class MarketEventGenerator:
         # event list
         self.on_event = on_event
         self.events = {}
+        self.events[MarketEvent.SURGE] = []
+        self.events[MarketEvent.SLUMP] = []
+        self.events[MarketEvent.SLIP] = []
+        self.events[MarketEvent.GAIN] = []
+        self.events[MarketEvent.BOTTOM_DIVERGENCE] = []
+        self.events[MarketEvent.TOP_DIVERGENCE] = []
 
     def add_event_data(self, market_event_data: MarketEventData, timeout: timedelta = timedelta(minutes=5)):
-        if market_event_data.event_type in self.events:
-            if len(self.events[market_event_data.event_type]) > 0:
-                latest_event = self.events[market_event_data.event_type][0]
-                datetime_now = datetime.datetime.now()
+        event_type = market_event_data.event_type
+        datetime_now = datetime.datetime.now()
+        if event_type in self.events:
+            if len(self.events[event_type]) > 0:
+                latest_event = self.events[event_type][-1]
                 if datetime_now - latest_event.event_datetime > timeout:
-                    self.events[market_event_data.event_type].append(market_event_data)
+                    self.events[event_type].append(market_event_data)
             else:
-                self.events[market_event_data.event_type].append(market_event_data)
+                self.events[event_type].append(market_event_data)
         else:
-            self.events[market_event_data.event_type] = []
-            self.events[market_event_data.event_type].append(market_event_data)
+            self.events[event_type] = []
+            self.events[event_type].append(market_event_data)
 
     def get_latest_event(self, event_type: MarketEvent):
         if event_type in self.events:
@@ -212,7 +219,7 @@ class MarketEventGenerator:
         if event_type in self.events:
             return self.events[event_type]
         else:
-            return None
+            return []
 
     # def update_params(self, params={}):
     #     for key in params:
