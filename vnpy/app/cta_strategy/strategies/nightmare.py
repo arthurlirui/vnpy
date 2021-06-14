@@ -19,6 +19,7 @@ from scipy.signal import find_peaks
 from pprint import pprint
 import os
 from termcolor import colored
+from vnpy.trader.calc import VlineFeature
 
 from vnpy.trader.utility import load_json, save_json
 
@@ -30,7 +31,8 @@ from vnpy.trader.constant import (
     Interval,
     Exchange,
     Offset,
-    Status
+    Status,
+    MarketEvent
 )
 
 from vnpy.app.cta_strategy import (
@@ -44,7 +46,7 @@ from vnpy.app.cta_strategy import (
     ArrayManager,
 )
 
-from vnpy.trader.calc import VlineFeature
+from vnpy.trader.calc import VlineFeature, BarFeature
 
 import pytz
 SAUDI_TZ = pytz.timezone("Asia/Riyadh")
@@ -56,10 +58,13 @@ class Nightmare(CtaTemplate):
     display_name = "Nightmare"
     author = "Arthur"
     default_setting = {'base_currency': 'btc', 'quote_currency': 'usdt',
+                       'base_short_currency': 'btc3s', 'base_long_currency': 'btc3l',
                        'exchange': 'HUOBI', 'vline_vol': 1, 'total_invest': 500,
                        'trade_amount': 40, 'global_prob': 0.5, 'max_break_count': 4}
     base_currency = 'btc'
     quote_currency = 'usdt'
+    base_short_currency = 'btc3s'
+    base_long_currency = 'btc3l'
     exchange = 'HUOBI'
     vline_vol = 1
     total_invest = 500
@@ -68,26 +73,37 @@ class Nightmare(CtaTemplate):
     max_break_count = 4
     has_short_liquidation = False
     has_long_liquidation = False
-    parameters = ['base_currency', 'quote_currency', 'exchange', 'vline_vol',
-                  'total_invest', 'trade_amount', 'global_prob', 'max_break_count',
-                  'trade_gain_thresh', 'trade_speed_thresh',
-                  'sv_t3', 'sv_t5', 'sv_t10', 'sv_t20', 's_t3', 's_t5', 's_t10', 's_t20']
+    parameters = ['base_currency', 'quote_currency', 'exchange', 'vline_vol', 'total_invest',
+                  'sv_0_3_thresh', 'sv_3_20_thresh', 'sv_buy_15s_thresh', 'sv_sell_15s_thresh',
+                  'sv_buy_60s_thresh', 'sv_sell_60s_thresh', 'sv_buy_120s_thresh', 'sv_buy_120s_thresh',
+                  'sv_buy_180s_thresh', 'sv_buy_180s_thresh',
+                  #'trade_amount', 'global_prob', 'max_break_count',
+                  #'trade_gain_thresh', 'trade_speed_thresh',
+                  #'sv_t3', 'sv_t5', 'sv_t10', 'sv_t20', 's_t3', 's_t5', 's_t10', 's_t20'
+                  ]
 
-    variables = ['timer_count', 'upper_break', 'lower_break', 'upper_break_count', 'lower_break_count',
+    variables = ['timer_count',
+                 #'upper_break', 'lower_break', 'upper_break_count', 'lower_break_count',
                  'min_invest', 'cur_invest', 'max_invest', 'total_invest',
-                 'vol_select', 'trade_speed', 'trade_gain', 'trading_quota', 'median_vol',
-                 'is_price_going_down', 'is_price_going_up', 'is_high_vol', 'is_high_trade_speed',
-                 'sv_20_0', 'sv_10_0', 'sv_5_0', 'sv_3_0',
-                 'spread_20_0', 'spread_10_0', 'spread_5_0', 'spread_3_0',
+                 'vol_select', 'buy_speed', 'sell_speed', 'total_speed',
+                 #'trade_speed', 'trade_gain', 'trading_quota',
+                 'median_vol', 'median_vol_100', 'median_vol_1000',
+                 #'is_price_going_down', 'is_price_going_up', 'is_high_vol', 'is_high_trade_speed',
+                 #'sv_20_0', 'sv_10_0', 'sv_5_0', 'sv_3_0',
+                 #'spread_20_0', 'spread_10_0', 'spread_5_0', 'spread_3_0',
+                 'is_gain', 'is_slip', 'is_surge', 'is_slump', 'is_top_divergence', 'is_bottom_divergence',
                  'has_short_liquidation', 'has_long_liquidation', 'stop_loss_price', 'take_profit_price']
 
     #usdt_vol_list = [10, 40, 160, 640, 2560, 10240, 40960]
     #bch3l_vol_list = [1000, 10000, 100000, 1000000]
     btc_vol_list = [10, 40, 160, 640]
-    #market_params = {'btcusdt': {'vline_vol': 10, 'vline_vol_list': usdt_vol_list, 'bin_size': 1.0},
-    #                 'bch3lusdt': {'vline_vol': 10, 'vline_vol_list': usdt_vol_list, 'bin_size': 0.01}}
-    #market_params = {'bch3lusdt': {'vline_vol': 100, 'vline_vol_list': bch3l_vol_list, 'bin_size': 0.01}}
-    market_params = {'btcusdt': {'vline_vol': 1, 'vline_vol_list': btc_vol_list, 'bin_size': 0.1}}
+    btc3s_vol_list = [5000000, 20000000, 80000000, 320000000]
+    btc3l_vol_list = [200, 800, 3200, 12800]
+    market_params = {
+        'btcusdt': {'vline_vol': 1, 'vline_vol_list': btc_vol_list, 'bin_size': 1},
+        'btc3susdt': {'vline_vol': 5000000, 'vline_vol_list': btc3s_vol_list, 'bin_size': 0.0001},
+        'btc3lusdt': {'vline_vol': 100, 'vline_vol_list': btc3l_vol_list, 'bin_size': 0.1}
+    }
 
     def __init__(self, cta_engine, strategy_name, vt_symbol, setting=default_setting):
         """"""
@@ -99,6 +115,13 @@ class Nightmare(CtaTemplate):
         self.symbol = self.base_currency+self.quote_currency
         self.symbols = []
         self.symbols.append(self.symbol)
+
+        if self.symbol == 'btcusdt':
+            # add 3x short pair
+            #self.symbols.append(self.base_short_currency+self.quote_currency)
+            # add 3x long pair
+            #self.symbols.append(self.base_long_currency+self.quote_currency)
+            pass
 
         # data buffer
         self.trade_buf = []
@@ -116,6 +139,14 @@ class Nightmare(CtaTemplate):
         # order book buffer
         self.order_book = None
         self.on_init()
+
+        # subscribe other symbol
+        #symbol = 'btc3susdt'
+        # for symbol in self.symbols:
+        #     if self.exchange == 'HUOBI':
+        #         req = SubscribeRequest(symbol=symbol, exchange=Exchange.HUOBI)
+        #         self.cta_engine.main_engine.subscribe(req, 'HUOBI')
+        #         self.write_log(f"行情订阅{symbol}")
 
     def on_init(self):
         """
@@ -138,7 +169,6 @@ class Nightmare(CtaTemplate):
 
         # market event generator
         self.meg = MarketEventGenerator(on_event=self.on_market_event)
-
 
         self.is_data_inited = False
 
@@ -198,36 +228,19 @@ class Nightmare(CtaTemplate):
         self.is_slip = False
         self.is_retreat = False
         self.is_slump = False
+        self.is_bottom_divergence = False
+        self.is_top_divergence = False
 
         #
         self.buy_price = None
         self.sell_price = None
         self.vol_select = self.market_params[self.symbol]['vline_vol_list'][0]
         self.median_vol = None
-
-        # trading speed
-        self.trade_speed = -1
-        self.trade_gain = -1
-        self.trade_gain_thresh = 50
-        self.trade_speed_thresh = 10
-
-        self.sv_3_0 = 0
-        self.sv_5_0 = 0
-        self.sv_10_0 = 0
-        self.sv_20_0 = 0
-        self.spread_3_0 = 0
-        self.spread_5_0 = 0
-        self.spread_10_0 = 0
-        self.spread_20_0 = 0
-
-        self.sv_t3 = 0.003
-        self.sv_t5 = 0.006
-        self.sv_t10 = 0.006
-        self.sv_t20 = 0.01
-        self.s_t3 = 0.003
-        self.s_t5 = 0.006
-        self.s_t10 = 0.006
-        self.s_t20 = 0.01
+        self.median_vol_100 = None
+        self.median_vol_1000 = None
+        self.total_speed = None
+        self.buy_speed = None
+        self.sell_speed = None
 
         # liquidation signal
         self.has_short_liquidation = False
@@ -245,7 +258,7 @@ class Nightmare(CtaTemplate):
         self.max_sending_count = 4
 
         # buying or selling volume
-        self.short_term_trading_vol = 0.1 * self.max_sending_count * self.total_invest
+        self.short_term_trading_vol = 0.1 * self.total_invest
         self.cur_buy_vol = 0
         self.cur_sell_vol = 0
 
@@ -274,6 +287,12 @@ class Nightmare(CtaTemplate):
         for kp in self.kline_phase:
             self.spread_vol[kp] = []
 
+        # for symbol in self.symbols:
+        #     if self.exchange == 'HUOBI':
+        #         req = SubscribeRequest(symbol=symbol, exchange=Exchange.HUOBI)
+        #         self.cta_engine.main_engine.subscribe(req, 'HUOBI')
+        #         self.write_log(f"行情订阅{symbol}")
+        self.init_thresh()
         self.init_data()
 
     def on_start(self):
@@ -294,6 +313,45 @@ class Nightmare(CtaTemplate):
                 vt_sym = s + '.' + ex
                 self.his_trade_buf[vt_sym] = []
                 self.his_kline_buf[vt_sym] = []
+
+    def init_thresh(self):
+        # trading speed
+        self.trade_speed = -1
+        self.trade_gain = -1
+        self.trade_gain_thresh = 50
+        self.trade_speed_thresh = 10
+
+        # spread vol thresh: buy, sell, total
+        self.sv_3_0 = 0
+        self.sv_5_0 = 0
+        self.sv_10_0 = 0
+        self.sv_20_0 = 0
+        # self.spread_3_0 = 0
+        # self.spread_5_0 = 0
+        # self.spread_10_0 = 0
+        # self.spread_20_0 = 0
+
+        thresh = 0.0001
+        self.sv_buy_15s_thresh = 1.5*thresh
+        self.sv_sell_15s_thresh = 1.5*thresh
+        self.sv_buy_60s_thresh = thresh
+        self.sv_sell_60s_thresh = thresh
+        self.sv_buy_120s_thresh = thresh
+        self.sv_sell_120s_thresh = thresh
+        self.sv_buy_180s_thresh = thresh
+        self.sv_sell_180s_thresh = thresh
+
+        self.sv_3_20_thresh = thresh
+        self.sv_0_3_thresh = thresh
+
+        self.sv_t3 = 0.003
+        self.sv_t5 = 0.006
+        self.sv_t10 = 0.006
+        self.sv_t20 = 0.01
+        self.s_t3 = 0.003
+        self.s_t5 = 0.006
+        self.s_t10 = 0.006
+        self.s_t20 = 0.01
 
     def init_data(self):
         self.init_buf()
@@ -468,8 +526,8 @@ class Nightmare(CtaTemplate):
                 print(colored(trade, color='red'))
 
 
-        self.check_price_break(price=price, direction=Direction.LONG, use_vline=True)
-        self.check_price_break(price=price, direction=Direction.SHORT, use_vline=True)
+        #self.check_price_break(price=price, direction=Direction.LONG, use_vline=True)
+        #self.check_price_break(price=price, direction=Direction.SHORT, use_vline=True)
 
         #self.update_trade_prob(price=price)
         #self.make_decision(price=trade.price)
@@ -494,12 +552,20 @@ class Nightmare(CtaTemplate):
     def on_vline(self, vline: VlineData, vol: int):
         if not self.is_data_inited:
             return
+        # update vline-based feature
+        #self.update_vline_feature()
+
         # update price break signal
         if True:
             if vline.buy_volume > vline.sell_volume:
                 print(colored(vline, color='green'))
             else:
                 print(colored(vline, color='red'))
+
+        #self.update_vline_feature()
+
+        #res_spread_vol = self.update_spread_vol_vline(start_second=0, seconds=[15, 60, 120, 180, 600, 1200])
+        #print(res_spread_vol)
         #vol = self.market_params[self.symbol]['vline_vol']
         #vlines = self.vg[self.vt_symbol].vlines[vol]
         #print(vol, vline)
@@ -507,7 +573,8 @@ class Nightmare(CtaTemplate):
 
     def on_kline(self, bar: BarData):
         self.kline_buf.append(bar)
-        #print(len(self.kline_buf), bar)
+
+        #self.update_volume_feature()
 
     def on_trade(self, trade: TradeData):
         if len(self.account_trades) > 0:
@@ -535,18 +602,20 @@ class Nightmare(CtaTemplate):
         self.update_avg_trade_price()
 
     def on_order(self, order: OrderData):
+        print('OnOrder', order)
         if order.status == Status.NOTTRADED or order.status == Status.SUBMITTING:
-            print('OnOrder:', order)
             self.orders[order.vt_orderid] = order
             print(len(self.orders))
         if order.status == Status.PARTTRADED:
-            print('OnOrder:', order)
             self.orders[order.vt_orderid] = order
             print(len(self.orders))
         if order.status == Status.ALLTRADED:
-            print('OnOrder', order)
-            self.orders.pop(order.vt_orderid)
+            if order.vt_orderid in self.orders:
+                self.orders.pop(order.vt_orderid)
             print(len(self.orders))
+        if order.status == Status.CANCELLED:
+            if order.vt_orderid in self.orders:
+                self.orders.pop(order.vt_orderid)
 
     def on_account(self, accdata: AccountData):
         if accdata.account_id != self.account_info.account_id:
@@ -965,7 +1034,7 @@ class Nightmare(CtaTemplate):
             volume = self.generate_volume(price=price, direction=direction, check_balance=True, check_position=True)
             self.generate_order(price=None, volume=volume, direction=direction, type=OrderType.IOC)
 
-    def sell_quick(self, price: float, tp_min=1.01, td_quick: datetime.timedelta = datetime.timedelta(minutes=20)):
+    def sell_quick(self, price: float, tp_min=1.01, td_quick: datetime.timedelta = datetime.timedelta(minutes=10)):
         '''
         1. quick sell if has profit
         '''
@@ -976,7 +1045,7 @@ class Nightmare(CtaTemplate):
         if cur_position < 0.5 * self.total_invest and price > tp_min * long_price and long_pos > 0.0:
             direction = Direction.SHORT
             volume = self.generate_volume(price=price, direction=direction, check_balance=True, check_position=True)
-            self.generate_order(price=None, volume=volume, direction=direction, type=OrderType.IOC)
+            self.generate_order(price=None, volume=volume, direction=direction, type=OrderType.LIMIT)
 
     def take_profit(self, price: float, take_profit_ratio=1.10):
         ''''''
@@ -1087,34 +1156,72 @@ class Nightmare(CtaTemplate):
                 #self.send_order(direction=direction, price=price, volume=volume, offset=Offset.NONE)
 
     def buy_slump(self, price: float):
-        if self.has_long_liquidation and not self.first_time:
+        #if self.has_long_liquidation and not self.first_time:
+        # 1. don't buy in top divergence
+        top_div_events = self.meg.events[MarketEvent.TOP_DIVERGENCE]
+        is_top_divergence = False
+        if len(top_div_events) > 0:
+            last_top_div_event = top_div_events[-1]
+            if datetime.datetime.now() - last_top_div_event.event_datetime > datetime.timedelta(minutes=30):
+                is_top_divergence = True
+        # 2. don't buy after surge
+        surge_events = self.meg.events[MarketEvent.SURGE]
+        is_surge = False
+        if len(surge_events) > 0:
+            last_surge_event = surge_events[-1]
+            if datetime.datetime.now() - last_surge_event.event_datetime > datetime.timedelta(minutes=60):
+                is_surge = True
+        if self.is_slump and not is_top_divergence and not is_surge and not self.first_time:
             direction = Direction.LONG
             # 1. price is in low position: check bars
             #cur_position = self.get_current_position(quote=True, available=True)
-            cur_usdt = self.get_current_position(quote=True, available=True)
-            total_usdt = 1800
-            if total_usdt - cur_usdt < self.max_invest and self.cur_buy_vol < self.short_term_trading_vol:
+            price = self.last_trade.price
+            cur_base = self.get_current_position(base=True, volume=True) * price
+
+            total_quote = self.get_current_position(quote=True, volume=True)
+            avail_quote = self.get_current_position(quote=True, available=True)
+            frozen_quote = total_quote - avail_quote
+            cur_invest = cur_base + frozen_quote
+
+            #total_usdt = 1800
+            #self.total_invest
+            if cur_invest < self.max_invest and self.cur_buy_vol < self.short_term_trading_vol:
                 volume = self.generate_volume(price=price, direction=direction, check_position=True)
                 self.generate_order(price=None, volume=volume, direction=direction, min_vol=10, type=OrderType.MARKET)
                 self.cur_buy_vol += volume * price
-                for i in range(1):
+                for i in range(3):
                     volume = self.generate_volume(price=price, direction=direction, check_position=True)
-                    self.generate_order(price=price * (1.0 - 0.002 * (i + 1)), volume=volume, direction=direction,
+                    self.generate_order(price=price * (1.0 - 0.0005 * (i + 1)),
+                                        volume=volume, direction=direction,
                                         min_vol=10, type=OrderType.LIMIT)
                     self.cur_buy_vol += volume * price
 
-    def sell_soar(self, price: float):
-        if self.has_short_liquidation and not self.first_time:
+    def sell_surge(self, price: float):
+        # 1. don't sell after bottom_divergence
+        bottom_div_events = self.meg.events[MarketEvent.BOTTOM_DIVERGENCE]
+        is_bottom_divergence = False
+        if len(bottom_div_events) > 0:
+            last_bottom_div_event = bottom_div_events[-1]
+            if datetime.datetime.now() - last_bottom_div_event.event_datetime > datetime.timedelta(minutes=30):
+                is_bottom_divergence = True
+        # 2. don't sell immediately after short liquidation
+        slump_events = self.meg.events[MarketEvent.SLUMP]
+        is_slump = False
+        if len(slump_events) > 0:
+            last_slump_event = slump_events[-1]
+            if datetime.datetime.now() - last_slump_event.event_datetime > datetime.timedelta(minutes=10):
+                is_slump = True
+        if self.is_surge and not is_bottom_divergence and not is_slump and not self.first_time:
             if self.cur_sell_vol < self.short_term_trading_vol:
                 direction = Direction.SHORT
                 volume = self.generate_volume(price=price, direction=direction, check_position=True)
                 self.generate_order(price=None, volume=volume, direction=direction, min_vol=10, type=OrderType.MARKET)
                 self.cur_sell_vol += volume * price
-                for i in range(1):
+                for i in range(3):
                     volume = self.generate_volume(price=price, direction=direction, check_position=True)
-                    self.generate_order(price=price * (1 + 0.002 * (i + 1)), volume=volume, direction=direction,
+                    self.generate_order(price=price * (1 + 0.0005 * (i + 1)), volume=volume, direction=direction,
                                         min_vol=10, type=OrderType.LIMIT)
-                    self.cur_buy_vol += volume * price
+                    self.cur_sell_vol += volume * price
 
     def slow_sell(self, price: float, max_ratio: float = 0.7):
         cur_position = price * self.get_current_position(base=True, volume=True)
@@ -1131,10 +1238,10 @@ class Nightmare(CtaTemplate):
         if cur_position < min_ratio * self.total_invest and self.has_slow_suck_quota:
             # 1. price is lower than before
             #vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
-            klines_15m = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=Interval.MINUTE_15)
+            klines_1m = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=Interval.MINUTE)
             #min_price = np.min([vl.close_price for vl in vlines[-100:]])
-            low_price = np.min([kl.close_price for kl in klines_15m[-16:]])
-            if price < low_price and self.pos < 0.1:
+            low_price = np.min([kl.close_price for kl in klines_1m[-300:]])
+            if price < 0.995*low_price and self.pos < 0.1:
                 volume = self.generate_volume(price=price, direction=direction, check_position=True)
                 self.generate_order(price=None, volume=volume, direction=direction, min_vol=10, type=OrderType.IOC)
                 self.has_slow_suck_quota = False
@@ -1165,10 +1272,10 @@ class Nightmare(CtaTemplate):
         #    self.chase_rebound(price=price)
 
         # 2.2 buy at low price
-        if True:
+        if False:
             self.slow_suck(price=price)
 
-        if True:
+        if False:
             self.slow_sell(price=price)
 
         #if True:
@@ -1176,7 +1283,7 @@ class Nightmare(CtaTemplate):
 
         # 3. sell at high volume and high price
         if True:
-            self.sell_soar(price=price)
+            self.sell_surge(price=price)
 
         if True:
             self.sell_quick(price=price, tp_min=1.01, td_quick=datetime.timedelta(minutes=20))
@@ -1188,6 +1295,79 @@ class Nightmare(CtaTemplate):
         # 5. take profit
         if True:
             self.take_profit(price=price)
+
+    def update_vline_feature(self):
+        vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
+        datetime_now = datetime.datetime.now()
+        if len(vlines) > 0 and datetime_now - vlines[-1].close_time < datetime.timedelta(seconds=60):
+            res_spread_vol = self.update_spread_vol_vline(seconds=[15, 60, 120, 180])
+            self.update_market_event(res_spread_vol=res_spread_vol)
+            #pprint(res_spread_vol)
+            #print(self.meg.events)
+            if False:
+                bsv = res_spread_vol[Direction.LONG]
+                ssv = res_spread_vol[Direction.SHORT]
+                tsv = res_spread_vol[Direction.NONE]
+                s = 'avg_sv'
+                print(f'B:{bsv[15][s]} {bsv[60][s]} {bsv[120][s]} {bsv[180][s]}')
+                print(f'S:{ssv[15][s]} {ssv[60][s]} {ssv[120][s]} {ssv[180][s]}')
+                print(f'T:{tsv[15][s]} {tsv[60][s]} {tsv[120][s]} {tsv[180][s]}')
+                print()
+                for event_type in self.meg.events:
+                    #print(self.meg.events[event_type])
+                    events = self.meg.events[event_type]
+                    if len(events) > 0:
+                        event = events[-1]
+                        if event.event_datetime > datetime.datetime.now()-datetime.timedelta(minutes=10):
+                            print(event)
+                # for event in self.meg.events[event_type]:
+                #     if event.event_datetime > datetime.datetime.now()-datetime.timedelta(minutes=10):
+                #         print(event)
+
+        # self.sv_buy_15 = res_spread_vol[Direction.LONG][15][0]
+        # self.sv_buy_60 = res_spread_vol[Direction.LONG][60][0]
+        # self.sv_buy_120 = res_spread_vol[Direction.LONG][120][0]
+        #
+        # self.sv_sell_15 = res_spread_vol[Direction.SHORT][15][0]
+        # self.sv_sell_60 = res_spread_vol[Direction.SHORT][60][0]
+        # self.sv_sell_120 = res_spread_vol[Direction.SHORT][120][0]
+        # print(res_spread_vol)
+
+    def update_tick_feature(self):
+        pass
+
+    def update_kline_feature(self):
+        pass
+
+    def update_volume_feature(self):
+        #kline_1m = self.kqg.get_bars(self.vt_symbol, Interval.MINUTE)
+        #vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
+        kline_1m = self.kqg.get_bars(self.vt_symbol, Interval.MINUTE)
+        kl100 = kline_1m[-100:]
+        kl1000 = kline_1m[-1000:]
+        if len(kl100) < 100 or len(kl1000) < 1000:
+            return
+        self.median_vol_100 = float(np.median([kl.amount for kl in kl100]))
+        self.median_vol_1000 = float(np.median([kl.amount for kl in kl1000]))
+
+        # update vol select for price distribution
+        vol_list = self.market_params[self.symbol]['vline_vol_list']
+        tmp = [vol for vol in vol_list if vol > self.median_vol_1000 * 20]
+        if len(tmp) > 0:
+            self.vol_select = min(tmp)
+        else:
+            self.vol_select = vol_list[-1]
+
+    def update_market_event(self, res_spread_vol: dict):
+        datetime_now = datetime.datetime.now()
+        #print(self.last_trade)
+        if self.last_trade and datetime_now - self.last_trade.datetime > datetime.timedelta(seconds=15):
+            return
+        #vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
+        self.check_gain_slip(res_spread_vol, use_vline=True)
+        self.check_surge_slump(res_spread_vol, use_vline=True)
+        self.check_divergence(res_spread_vol=res_spread_vol)
+        self.check_trade_speed()
 
     def update_high_low_price(self):
         bars1m = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=Interval.MINUTE)
@@ -1210,34 +1390,54 @@ class Nightmare(CtaTemplate):
             else:
                 self.prev_high_price = None
 
-    def update_vol(self):
-        kline_1m = self.kqg.get_bars(self.vt_symbol, Interval.MINUTE)
-        kltmp = kline_1m[-1000:]
-        if len(kltmp) < 100:
-            return
-        med_vol = float(np.median([kl.amount for kl in kltmp]))
-        vol_list = self.market_params[self.symbol]['vline_vol_list']
-        tmp = [vol for vol in vol_list if vol > med_vol * 20]
-        self.median_vol = med_vol
-        if len(tmp) > 0:
-            self.vol_select = min(tmp)
-        else:
-            self.vol_select = vol_list[-1]
+    def update_vol(self, time_step=10):
+        if self.timer_count % time_step == 0:
+            self.cur_buy_vol = 0
+            self.cur_sell_vol = 0
 
-        self.cur_buy_vol = 0
-        self.cur_sell_vol = 0
+            events = self.meg.events
+            for event_type in events:
+                event_list = events[event_type]
+                if len(event_list) > 0:
+                    last_event = event_list[-1]
+                    dateitme_now = datetime.datetime.now()
+                    if dateitme_now - last_event.event_datetime > datetime.timedelta(minutes=1):
+                        if last_event.event_type == MarketEvent.GAIN:
+                            self.is_gain = False
+                        if last_event.event_type == MarketEvent.SLIP:
+                            self.is_slip = False
+                        if last_event.event_type == MarketEvent.SLUMP:
+                            self.is_slump = False
+                        if last_event.event_type == MarketEvent.SURGE:
+                            self.is_surge = False
+                        if last_event.event_type == MarketEvent.TOP_DIVERGENCE:
+                            self.is_top_divergence = False
+                        if last_event.event_type == MarketEvent.BOTTOM_DIVERGENCE:
+                            self.is_bottom_divergence = False
 
-        self.buy_vol_1m = 0
-        self.buy_vol_5m = 0
-        self.buy_vol_15m = 0
-        self.sell_vol_1m = 0
-        self.sell_vol_5m = 0
-        self.sell_vol_15m = 0
+        # kline_1m = self.kqg.get_bars(self.vt_symbol, Interval.MINUTE)
+        # kltmp = kline_1m[-1000:]
+        # if len(kltmp) < 100:
+        #     return
+        # med_vol = float(np.median([kl.amount for kl in kltmp]))
+        # vol_list = self.market_params[self.symbol]['vline_vol_list']
+        # tmp = [vol for vol in vol_list if vol > med_vol * 20]
+        # self.median_vol = med_vol
+        # if len(tmp) > 0:
+        #     self.vol_select = min(tmp)
+        # else:
+        #     self.vol_select = vol_list[-1]
+        # self.buy_vol_1m = 0
+        # self.buy_vol_5m = 0
+        # self.buy_vol_15m = 0
+        # self.sell_vol_1m = 0
+        # self.sell_vol_5m = 0
+        # self.sell_vol_15m = 0
 
         # update buyer and seller volume in real time
-        vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
-        for vl in reversed(vlines):
-            pass
+        # vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
+        # for vl in reversed(vlines):
+        #     pass
 
     def update_ref_price(self):
         '''update reference price for buy and sell'''
@@ -1263,12 +1463,12 @@ class Nightmare(CtaTemplate):
         if self.sell_price:
             self.sell_prob = self.calc_pro_sell(price=price, price_ref=self.sell_price, theta=self.theta, global_prob=self.global_prob)
 
-    def update_position_budget(self, price: float):
-        # check current position
-        #cur_position = self.balance_info.data[self.base_currency].available * price
-        cur_position = self.get_current_position(base=True, available=True)*price
-        if cur_position > 0.9*self.max_invest:
-            self.max_invest = min(self.total_invest, cur_position+0.1*self.total_invest)
+    # def update_position_budget(self, price: float):
+    #     # check current position
+    #     #cur_position = self.balance_info.data[self.base_currency].available * price
+    #     cur_position = self.get_current_position(base=True, available=True)*price
+    #     if cur_position > 0.9*self.max_invest:
+    #         self.max_invest = min(self.total_invest, cur_position+0.1*self.total_invest)
 
     def allocate_invest_limit(self, unit_size: int = 1, unit_ratio: float = 0.1):
         datetime_now = datetime.datetime.now(tz=MY_TZ)
@@ -1289,15 +1489,29 @@ class Nightmare(CtaTemplate):
         base_invest = 0.1 * self.total_invest
         cur_invest = self.get_current_position(base=True, volume=True) * price
         self.cur_invest = float(np.round(cur_invest, 4))
-        new_max_invest = min(max(int(self.cur_invest/base_invest+1)*base_invest, base_invest), self.total_invest)
 
-        if not self.update_invest_limit_time:
-            self.max_invest = new_max_invest
-            self.update_invest_limit_time = datetime_now
+        event_slump = self.meg.get_event(event_type=MarketEvent.SLUMP)
+        event_surge = self.meg.get_event(event_type=MarketEvent.SURGE)
+        datetime_thresh = datetime.datetime.now() - datetime.timedelta(minutes=180)
+        slump_count = 0
+        surge_count = 0
+        if len(event_slump) > 0:
+            slump_count = len([event for event in event_slump if event.event_datetime < datetime_thresh])
+        if len(event_surge) > 0:
+            surge_count = len([event for event in event_surge if event.event_datetime < datetime_thresh])
+        if slump_count >= 1 and surge_count == 0:
+            self.max_invest = min(slump_count*2, 10) * base_invest
+        else:
+            self.max_invest = 1.0 * base_invest
 
-        if self.update_invest_limit_time+update_time_period < datetime_now:
-            self.update_invest_limit_time = datetime_now
-            self.max_invest = min(self.total_invest, new_max_invest)
+        #new_max_invest = min(max(int(self.cur_invest/base_invest+1)*base_invest, base_invest), self.total_invest)
+        # if not self.update_invest_limit_time:
+        #     self.max_invest = new_max_invest
+        #     self.update_invest_limit_time = datetime_now
+        #
+        # if self.update_invest_limit_time+update_time_period < datetime_now:
+        #     self.update_invest_limit_time = datetime_now
+        #     self.max_invest = min(self.total_invest, new_max_invest)
 
     def update_invest_position(self):
         '''update invest position'''
@@ -1320,59 +1534,56 @@ class Nightmare(CtaTemplate):
             self.max_invest = min(self.total_invest, self.max_invest + 0.1 * self.total_invest)
         self.max_invest = np.round(self.max_invest, 4)
 
-    def calc_vline_break(self):
-        pass
+    # def calc_spread_vol_vline(self, start: int, end: int) -> float:
+    #     vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
+    #     avg_spread_vol = 0
+    #     spread_vol = 0
+    #     total_vol = 0
+    #     if not start:
+    #         start = 0
+    #     if not end:
+    #         end = len(vlines)
+    #     if start and end and start < end and start <= len(vlines) and end <= len(vlines):
+    #         vline_start_end = vlines[start: end]
+    #         spread_vol = np.sum([(vl.close_price - vl.open_price) / vl.open_price * vl.volume for vl in vline_start_end])
+    #         total_vol = np.sum([vl.volume for vl in vline_start_end])
+    #         #avg_vol = total_vol / len(vline_start_end)
+    #         if total_vol > 0:
+    #             avg_spread_vol = spread_vol / total_vol
+    #     return spread_vol, total_vol, avg_spread_vol
 
-    def calc_spread_vol_vline(self, start: int, end: int) -> float:
-        vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
-        avg_spread_vol = 0
-        spread_vol = 0
-        total_vol = 0
-        if not start:
-            start = 0
-        if not end:
-            end = len(vlines)
-        if start and end and start < end and start <= len(vlines) and end <= len(vlines):
-            vline_start_end = vlines[start: end]
-            spread_vol = np.sum([(vl.close_price - vl.open_price) / vl.open_price * vl.volume for vl in vline_start_end])
-            total_vol = np.sum([vl.volume for vl in vline_start_end])
-            #avg_vol = total_vol / len(vline_start_end)
-            if total_vol > 0:
-                avg_spread_vol = spread_vol / total_vol
-        return spread_vol, total_vol, avg_spread_vol
+    # def calc_spread_vol_kline(self, start: int, end: int, interval: Interval = Interval.MINUTE) -> float:
+    #     klines = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=interval)
+    #     #num_kline = len(klines)
+    #     vol_median = np.median([kl.volume for kl in klines[-1000:-1]])
+    #     avg_spread_vol = 0
+    #     spread_vol = 0
+    #     total_vol = 0
+    #     if not start:
+    #         start = 0
+    #     if not end:
+    #         end = len(klines)
+    #     if start and end and start < end and start <= len(klines) and end <= len(klines):
+    #         kline_start_end = klines[start: end]
+    #         spread_vol = np.sum([(kl.close_price - kl.open_price) / kl.open_price * kl.volume/vol_median for kl in kline_start_end])
+    #         total_vol = np.sum([kl.volume for kl in kline_start_end])
+    #         if total_vol > 0:
+    #             avg_spread_vol = spread_vol / total_vol
+    #     return spread_vol, total_vol, avg_spread_vol
 
-    def calc_spread_vol_kline(self, start: int, end: int, interval: Interval = Interval.MINUTE) -> float:
-        klines = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=interval)
-        #num_kline = len(klines)
-        vol_median = np.median([kl.volume for kl in klines[-1000:-1]])
-        avg_spread_vol = 0
-        spread_vol = 0
-        total_vol = 0
-        if not start:
-            start = 0
-        if not end:
-            end = len(klines)
-        if start and end and start < end and start <= len(klines) and end <= len(klines):
-            kline_start_end = klines[start: end]
-            spread_vol = np.sum([(kl.close_price - kl.open_price) / kl.open_price * kl.volume/vol_median for kl in kline_start_end])
-            total_vol = np.sum([kl.volume for kl in kline_start_end])
-            if total_vol > 0:
-                avg_spread_vol = spread_vol / total_vol
-        return spread_vol, total_vol, avg_spread_vol
-
-    def calc_spread_kline(self, start: int, end: int, interval: Interval = Interval.MINUTE) -> float:
-        klines = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=interval)
-        spread_sum = 0
-        total_vol = 0
-        if not start:
-            start = 0
-        if not end:
-            end = len(klines)
-        if start and end and start < end and start <= len(klines) and end <= len(klines):
-            kline_start_end = klines[start: end]
-            spread_sum = np.sum([(kl.close_price - kl.open_price) / kl.open_price for kl in kline_start_end])
-            total_vol = np.sum([kl.volume for kl in kline_start_end])
-        return spread_sum, total_vol
+    # def calc_spread_kline(self, start: int, end: int, interval: Interval = Interval.MINUTE) -> float:
+    #     klines = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=interval)
+    #     spread_sum = 0
+    #     total_vol = 0
+    #     if not start:
+    #         start = 0
+    #     if not end:
+    #         end = len(klines)
+    #     if start and end and start < end and start <= len(klines) and end <= len(klines):
+    #         kline_start_end = klines[start: end]
+    #         spread_sum = np.sum([(kl.close_price - kl.open_price) / kl.open_price for kl in kline_start_end])
+    #         total_vol = np.sum([kl.volume for kl in kline_start_end])
+    #     return spread_sum, total_vol
 
     def calc_gain_speed(self, num_vline: int = 3):
         vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
@@ -1481,7 +1692,11 @@ class Nightmare(CtaTemplate):
             self.trade_speed = np.round(self.trade_speed, 4)
         #self.check_surge_slump(thresh_gain=0.01, thresh_speed=30, num_vline=5)
 
-    def update_spread(self, time_step: int = 1):
+    def update_spread(self, time_step: int = 1, use_vline: bool = True):
+        if use_vline:
+            pass
+        else:
+            pass
         if self.timer_count % time_step == 0:
             spread_20_0, total_vol_20_0 = self.calc_spread_kline(start=-20, end=None, interval=Interval.MINUTE)
             spread_10_0, total_vol_10_0 = self.calc_spread_kline(start=-10, end=None, interval=Interval.MINUTE)
@@ -1495,21 +1710,67 @@ class Nightmare(CtaTemplate):
 
             #self.spread_20_0, self.spread_10_0, self.spread_5_0, self.spread_3_0 = spread_20_0, spread_10_0, spread_5_0, spread_3_0
 
-    def update_spread_vol_vline(self):
+    def update_vol_vline(self, start_second=0, seconds=[15, 60, 120, 180, 600, 1200]):
         vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
-        s0 = datetime.timedelta(seconds=0)
-        s15s = datetime.timedelta(seconds=15)
-        s60s = datetime.timedelta(seconds=60)
-        s120s = datetime.timedelta(seconds=120)
+        start_td = datetime.timedelta(seconds=start_second)
+        res_vol = {Direction.LONG: {}, Direction.SHORT: {}, Direction.NONE: {}}
+        for ss in seconds:
+            end_td = datetime.timedelta(seconds=ss)
+            vol_buy = VlineFeature.calc_vol(vlines=vlines, start_td=start_td, end_td=end_td, direction=Direction.LONG)
+            vol_sell = VlineFeature.calc_vol(vlines=vlines, start_td=start_td, end_td=end_td, direction=Direction.SHORT)
+            vol_total = VlineFeature.calc_vol(vlines=vlines, start_td=start_td, end_td=end_td, direction=Direction.NONE)
+            res_vol[Direction.LONG][ss] = vol_buy
+            res_vol[Direction.SHORT][ss] = vol_sell
+            res_vol[Direction.NONE][ss] = vol_total
+        return res_vol
 
-        sv_buy_15s = VlineFeature.calc_vol(vlines=vlines, start_td=s0, end_td=s15s, direction=Direction.LONG)
-        sv_buy_60s = VlineFeature.calc_vol(vlines=vlines, start_td=s0, end_td=s60s, direction=Direction.LONG)
-        sv_buy_120s = VlineFeature.calc_vol(vlines=vlines, start_td=s0, end_td=s120s, direction=Direction.LONG)
-        sv_sell_15s = VlineFeature.calc_vol(vlines=vlines, start_td=s0, end_td=s15s, direction=Direction.SHORT)
-        sv_sell_60s = VlineFeature.calc_vol(vlines=vlines, start_td=s0, end_td=s60s, direction=Direction.SHORT)
-        sv_sell_120s = VlineFeature.calc_vol(vlines=vlines, start_td=s0, end_td=s120s, direction=Direction.SHORT)
-        print(f'BUY:{sv_buy_15s} {sv_buy_60s} {sv_buy_120s}')
-        print(f'SELL:{sv_sell_15s} {sv_sell_60s} {sv_sell_120s}')
+    def update_spread_vol_vline(self, start_second=0, seconds=[15, 60, 120, 180, 600, 1200]):
+        vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
+        start_td = datetime.timedelta(seconds=start_second)
+        #res_vol = {Direction.LONG: {}, Direction.SHORT: {}, Direction.NONE: {}}
+        res_spread_vol = {Direction.LONG: {}, Direction.SHORT: {}, Direction.NONE: {}}
+        for ss in seconds:
+            end_td = datetime.timedelta(seconds=ss)
+            spread_vol_buy = VlineFeature.calc_spread_vline(vlines=vlines, start_td=start_td, end_td=end_td,
+                                                            direction=Direction.LONG)
+            spread_vol_sell = VlineFeature.calc_spread_vline(vlines=vlines, start_td=start_td, end_td=end_td,
+                                                             direction=Direction.SHORT)
+            spread_vol_total = VlineFeature.calc_spread_vline(vlines=vlines, start_td=start_td, end_td=end_td,
+                                                              direction=Direction.SHORT)
+            res_spread_vol[Direction.LONG][ss] = spread_vol_buy
+            res_spread_vol[Direction.SHORT][ss] = spread_vol_sell
+            res_spread_vol[Direction.NONE][ss] = spread_vol_total
+
+        return res_spread_vol
+        # s0 = datetime.timedelta(seconds=0)
+        # s15s = datetime.timedelta(seconds=15)
+        # s60s = datetime.timedelta(seconds=60)
+        # s120s = datetime.timedelta(seconds=120)
+        #
+        # sv_buy_15s = VlineFeature.calc_vol(vlines=vlines, start_td=s0, end_td=s15s, direction=Direction.LONG)
+        # sv_buy_60s = VlineFeature.calc_vol(vlines=vlines, start_td=s0, end_td=s60s, direction=Direction.LONG)
+        # sv_buy_120s = VlineFeature.calc_vol(vlines=vlines, start_td=s0, end_td=s120s, direction=Direction.LONG)
+        # sv_sell_15s = VlineFeature.calc_vol(vlines=vlines, start_td=s0, end_td=s15s, direction=Direction.SHORT)
+        # sv_sell_60s = VlineFeature.calc_vol(vlines=vlines, start_td=s0, end_td=s60s, direction=Direction.SHORT)
+        # sv_sell_120s = VlineFeature.calc_vol(vlines=vlines, start_td=s0, end_td=s120s, direction=Direction.SHORT)
+        #
+        # spread_vol_buy_15s = VlineFeature.calc_spread_vline(vlines=vlines, start_td=s0, end_td=s15s,
+        #                                                     direction=Direction.LONG)
+        # spread_vol_buy_60s = VlineFeature.calc_spread_vline(vlines=vlines, start_td=s0, end_td=s60s,
+        #                                                     direction=Direction.LONG)
+        # spread_vol_buy_120s = VlineFeature.calc_spread_vline(vlines=vlines, start_td=s0, end_td=s120s,
+        #                                                      direction=Direction.LONG)
+        #
+        # spread_vol_sell_15s = VlineFeature.calc_spread_vline(vlines=vlines, start_td=s0, end_td=s15s,
+        #                                                      direction=Direction.SHORT)
+        # spread_vol_sell_60s = VlineFeature.calc_spread_vline(vlines=vlines, start_td=s0, end_td=s60s,
+        #                                                      direction=Direction.SHORT)
+        # spread_vol_sell_120s = VlineFeature.calc_spread_vline(vlines=vlines, start_td=s0, end_td=s120s,
+        #                                                       direction=Direction.SHORT)
+        #
+        # print(f'BUY:{sv_buy_15s} {sv_buy_60s} {sv_buy_120s} {spread_vol_buy_15s} {spread_vol_buy_60s}')
+        # print(f'SELL:{sv_sell_15s} {sv_sell_60s} {sv_sell_120s} {spread_vol_sell_15s} {spread_vol_sell_60s}')
+        # print()
 
     def update_spread_vol(self, time_step: int = 1):
         if self.timer_count % time_step == 0:
@@ -1527,80 +1788,127 @@ class Nightmare(CtaTemplate):
             self.sv_3_0 = float(np.round(spread_vol_3_0, 8))
             #self.sv_20_0, self.sv_10_0, self.sv_5_0, self.sv_3_0 = spread_vol_20_0, spread_vol_10_0, spread_vol_5_0, spread_vol_3_0
 
-    def determine_market_status_vline(self):
-        pass
-
-    def check_gain_slip(self, count: int = 3):
+    def check_gain_slip_by_kline(self, count=3):
         kline_1m = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=Interval.MINUTE)
         kline_tmp = kline_1m[-1 * count:]
         close_open_ratio = [bar.close_price / bar.open_price for bar in kline_tmp]
         high_low_ratio = [bar.high_price / bar.low_price for bar in kline_tmp]
-        gain_count = sum([int(close_open_ratio[i] > 1.005 | high_low_ratio[i] < 1.005) for i in range(close_open_ratio)])
-        slip_count = sum([int(close_open_ratio[i] < 1.005 | high_low_ratio[i] < 1.005) for i in range(close_open_ratio)])
+        gain_count = sum(
+            [int(close_open_ratio[i] > 1.005 | high_low_ratio[i] < 1.005) for i in range(close_open_ratio)])
+        slip_count = sum(
+            [int(close_open_ratio[i] < 1.005 | high_low_ratio[i] < 1.005) for i in range(close_open_ratio)])
         self.is_gain = gain_count >= count
         self.is_slip = slip_count >= count
 
-    def calc_spread_turn_over_signal(self, num_vline1: int = 1000, num_vline2: int = 5):
-        '''1. previous negative spread, 2. receive position spread'''
+    def get_spread_vol(self, res_spread_vol: dict, direction: Direction, second: int, data_type: str):
+        if direction in res_spread_vol:
+            if second in res_spread_vol[direction]:
+                if data_type in res_spread_vol[direction][second]:
+                    return res_spread_vol[direction][second][data_type]
+        return None
+
+    def check_gain_slip_by_vline(self, res_spread_vol: dict):
         vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
-        num_vlines = len(vlines)
-        if num_vlines < num_vline1 or num_vlines < num_vline2:
-            return
-        s1 = num_vlines - num_vline1
-        e1 = num_vlines - num_vline2
-        s2 = num_vlines - num_vline2
-        e2 = num_vlines - 1
-        spread_vol1 = self.calc_spread_vol_vline(start=s1, end=e1)
-        spread_vol2 = self.calc_spread_vol_vline(start=s2, end=e2)
-        if spread_vol2 > 0.0001:
+        #self.is_gain = False
+        #self.is_slip = False
+        #avg_sv_buy_15s = res_spread_vol[Direction.LONG][15]
+        avg_sv_buy_15s = self.get_spread_vol(res_spread_vol, direction=Direction.LONG, second=15, data_type='avg_sv')
+        avg_sv_sell_15s = self.get_spread_vol(res_spread_vol, direction=Direction.SHORT, second=15, data_type='avg_sv')
+        avg_sv_15s = self.get_spread_vol(res_spread_vol, direction=Direction.NONE, second=15, data_type='total_vol')
+        avg_sv_buy_60s = self.get_spread_vol(res_spread_vol, direction=Direction.LONG, second=60, data_type='avg_sv')
+        avg_sv_sell_60s = self.get_spread_vol(res_spread_vol, direction=Direction.SHORT, second=60, data_type='avg_sv')
+        avg_sv_60s = self.get_spread_vol(res_spread_vol, direction=Direction.NONE, second=60, data_type='total_vol')
+
+        # calculate gain and slip
+        if avg_sv_buy_15s > self.sv_buy_15s_thresh or avg_sv_buy_60s > self.sv_buy_60s_thresh:
+            self.is_gain = True
+        if avg_sv_sell_15s < -1*self.sv_sell_15s_thresh or avg_sv_sell_60s < -1*self.sv_sell_60s_thresh:
+            self.is_slip = True
+
+        if self.is_gain:
+            event_datetime = vlines[-1].close_time
+            med = MarketEventData(event_type=MarketEvent.GAIN, event_datetime=event_datetime)
+            #print(med)
+            self.meg.add_event_data(market_event_data=med, timeout=datetime.timedelta(minutes=1))
+        if self.is_slip:
+            event_datetime = vlines[-1].close_time
+            med = MarketEventData(event_type=MarketEvent.SLIP, event_datetime=event_datetime)
+            #print(med)
+            self.meg.add_event_data(market_event_data=med, timeout=datetime.timedelta(minutes=1))
+
+    def check_gain_slip(self, res_spread_vol: dict, use_kline=False, use_vline=False):
+        if use_kline and not use_vline:
+            self.check_gain_slip_by_kline()
+        elif not use_kline and use_vline:
+            self.check_gain_slip_by_vline(res_spread_vol=res_spread_vol)
+        else:
             pass
-        print()
-        print(spread_vol1)
-        print(vlines[s1])
-        print(vlines[e1])
-        print(spread_vol2)
-        print(vlines[s2])
-        print(vlines[e2])
 
-    def check_gain_slip_vline(self, start: int = None, end: int = None, num_vline: int = 3, thresh: float = 0.01):
+    # def calc_spread_turn_over_signal(self, num_vline1: int = 1000, num_vline2: int = 5):
+    #     '''1. previous negative spread, 2. receive position spread'''
+    #     vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
+    #     num_vlines = len(vlines)
+    #     if num_vlines < num_vline1 or num_vlines < num_vline2:
+    #         return
+    #     s1 = num_vlines - num_vline1
+    #     e1 = num_vlines - num_vline2
+    #     s2 = num_vlines - num_vline2
+    #     e2 = num_vlines - 1
+    #     spread_vol1 = self.calc_spread_vol_vline(start=s1, end=e1)
+    #     spread_vol2 = self.calc_spread_vol_vline(start=s2, end=e2)
+    #     if spread_vol2 > 0.0001:
+    #         pass
+    #     print()
+    #     print(spread_vol1)
+    #     print(vlines[s1])
+    #     print(vlines[e1])
+    #     print(spread_vol2)
+    #     print(vlines[s2])
+    #     print(vlines[e2])
+
+    def check_surge_slump(self, res_spread_vol: dict, use_kline=False, use_vline=False):
+        if use_kline and not use_vline:
+            self.check_surge_slump_by_kline()
+        elif not use_kline and use_vline:
+            self.check_surge_slump_by_vline(res_spread_vol=res_spread_vol)
+        else:
+            pass
+
+    def check_surge_slump_by_vline(self, res_spread_vol: dict):
         vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
-        if start and end and start < end and start < len(vlines) and end < len(vlines):
-            vline_start_end = vlines[start: end]
-            avg_spread_vol = np.mean([(vl.close_price-vl.open_price)/vl.open_price * vl.volume for vl in vline_start_end])
-            avg_vol = np.mean([vl.volume for vl in vline_start_end])
-            if avg_spread_vol > thresh*avg_vol:
-                self.is_gain = True
-            elif avg_spread_vol < -1*thresh*avg_vol:
-                self.is_slip = True
-            else:
-                self.is_gain = False
-                self.is_slip = False
+        avg_sv_buy_60s = self.get_spread_vol(res_spread_vol, direction=Direction.LONG, second=60, data_type='avg_sv')
+        avg_sv_sell_60s = self.get_spread_vol(res_spread_vol, direction=Direction.SHORT, second=60, data_type='avg_sv')
+        total_vol_60s = self.get_spread_vol(res_spread_vol, direction=Direction.NONE, second=60, data_type='total_vol')
 
-        # kline_1m = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=Interval.MINUTE)
-        # kline_tmp = kline_1m[-1 * count:]
-        # close_open_ratio = [bar.close_price / bar.open_price for bar in kline_tmp]
-        # high_low_ratio = [bar.high_price / bar.low_price for bar in kline_tmp]
-        # gain_count = sum(
-        #     [int(close_open_ratio[i] > 1.005 | high_low_ratio[i] < 1.005) for i in range(close_open_ratio)])
-        # slip_count = sum(
-        #     [int(close_open_ratio[i] < 1.005 | high_low_ratio[i] < 1.005) for i in range(close_open_ratio)])
-        # self.is_gain = gain_count >= count
-        # self.is_slip = slip_count >= count
+        avg_sv_buy_120s = self.get_spread_vol(res_spread_vol, direction=Direction.LONG, second=120, data_type='avg_sv')
+        avg_sv_sell_120s = self.get_spread_vol(res_spread_vol, direction=Direction.SHORT, second=120, data_type='avg_sv')
+        total_vol_120s = self.get_spread_vol(res_spread_vol, direction=Direction.NONE, second=120, data_type='total_vol')
 
-    def check_climb_retreat(self, thresh: float = 100, num_vline: int = 20):
-        vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
-        if len(vlines) < num_vline:
-            self.is_climb = False
-            self.is_retreat = False
-            return
-        vlines20 = vlines[-1*num_vline:]
-        price_gain_vol = 0
-        for vl in vlines20:
-            price_gain_vol += (vl.close_price-vl.open_price)*vl.volume
-        self.is_climb = price_gain_vol > thresh
-        self.is_retreat = price_gain_vol < thresh
+        avg_sv_buy_180s = self.get_spread_vol(res_spread_vol, direction=Direction.LONG, second=180, data_type='avg_sv')
+        avg_sv_sell_180s = self.get_spread_vol(res_spread_vol, direction=Direction.SHORT, second=180, data_type='avg_sv')
+        total_vol_180s = self.get_spread_vol(res_spread_vol, direction=Direction.NONE, second=180, data_type='total_vol')
 
-    def check_surge_slump(self, thresh_gain: float = 0.01, thresh_speed: float = 10, num_vline: int = 10):
+        # calculate surge and slump
+        is_price_up = (avg_sv_buy_60s > self.sv_buy_60s_thresh) & (avg_sv_buy_120s > self.sv_buy_120s_thresh) & (avg_sv_buy_180s > self.sv_buy_180s_thresh)
+        is_price_down = (avg_sv_sell_60s < -1*self.sv_sell_60s_thresh) & (avg_sv_sell_120s < -1*self.sv_sell_120s_thresh) & (avg_sv_sell_180s < -1*self.sv_sell_180s_thresh)
+        is_high_vol = (total_vol_60s > 3*self.median_vol_100) & (total_vol_120s > 6*self.median_vol_100) & (total_vol_180s > 9*self.median_vol_100)
+        if is_price_up and is_high_vol:
+            self.is_surge = True
+        if is_price_down and is_high_vol:
+            self.is_slump = True
+
+        if self.is_surge:
+            event_datetime = vlines[-1].close_time
+            med = MarketEventData(event_type=MarketEvent.SURGE, event_datetime=event_datetime)
+            #print(med)
+            self.meg.add_event_data(market_event_data=med, timeout=datetime.timedelta(minutes=5))
+        if self.is_slump:
+            event_datetime = vlines[-1].close_time
+            med = MarketEventData(event_type=MarketEvent.SLUMP, event_datetime=event_datetime)
+            #print(med)
+            self.meg.add_event_data(market_event_data=med, timeout=datetime.timedelta(minutes=5))
+
+    def check_surge_slump_by_kline(self, thresh_gain: float = 0.01, thresh_speed: float = 10, num_vline: int = 10):
         vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
         if len(vlines) < num_vline:
             return
@@ -1616,6 +1924,81 @@ class Nightmare(CtaTemplate):
         price_gain = total_gain_vol / total_vol
         self.is_surge = (price_gain > thresh_gain) & (vol_speed > thresh_speed)
         self.is_slump = (price_gain < -1*thresh_gain) & (vol_speed > thresh_speed)
+
+    # def check_gain_slip_vline(self, start: int = None, end: int = None, num_vline: int = 3, thresh: float = 0.01):
+    #     vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
+    #     if start and end and start < end and start < len(vlines) and end < len(vlines):
+    #         vline_start_end = vlines[start: end]
+    #         avg_spread_vol = np.mean([(vl.close_price-vl.open_price)/vl.open_price * vl.volume for vl in vline_start_end])
+    #         avg_vol = np.mean([vl.volume for vl in vline_start_end])
+    #         if avg_spread_vol > thresh*avg_vol:
+    #             self.is_gain = True
+    #         elif avg_spread_vol < -1*thresh*avg_vol:
+    #             self.is_slip = True
+    #         else:
+    #             self.is_gain = False
+    #             self.is_slip = False
+
+        # kline_1m = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=Interval.MINUTE)
+        # kline_tmp = kline_1m[-1 * count:]
+        # close_open_ratio = [bar.close_price / bar.open_price for bar in kline_tmp]
+        # high_low_ratio = [bar.high_price / bar.low_price for bar in kline_tmp]
+        # gain_count = sum(
+        #     [int(close_open_ratio[i] > 1.005 | high_low_ratio[i] < 1.005) for i in range(close_open_ratio)])
+        # slip_count = sum(
+        #     [int(close_open_ratio[i] < 1.005 | high_low_ratio[i] < 1.005) for i in range(close_open_ratio)])
+        # self.is_gain = gain_count >= count
+        # self.is_slip = slip_count >= count
+
+    def check_divergence(self, res_spread_vol: dict, start_ind=3, end_ind=20):
+        vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
+        kline_1m = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=Interval.MINUTE)
+        res_sv_kl_3_20 = BarFeature.calc_spread_vol(kline_1m, start=start_ind, end=end_ind, interval=Interval.MINUTE)
+        start_td = datetime.timedelta(seconds=0)
+        end_td = datetime.timedelta(seconds=180)
+        #res_sv_vl_3m = VlineFeature.calc_spread_vline(vlines=vlines, start_td=start_td, end_td=end_td, direction=Direction.LONG)
+        avg_sv_3_20 = res_sv_kl_3_20['avg_sv']
+        #avg_sv_0_3 = res_sv_vl_3m['avg_sv']
+        avg_sv_0_3 = res_spread_vol[Direction.NONE][180]['avg_sv']
+        if avg_sv_0_3 > self.sv_0_3_thresh and avg_sv_3_20 < -1*self.sv_3_20_thresh:
+            self.is_bottom_divergence = True
+        if avg_sv_0_3 < -1*self.sv_0_3_thresh and avg_sv_3_20 > self.sv_3_20_thresh:
+            self.is_top_divergence = True
+
+        if self.is_bottom_divergence:
+            event_datetime = vlines[-1].close_time
+            med = MarketEventData(event_type=MarketEvent.BOTTOM_DIVERGENCE, event_datetime=event_datetime)
+            #print(med)
+            self.meg.add_event_data(market_event_data=med, timeout=datetime.timedelta(minutes=5))
+        if self.is_top_divergence:
+            event_datetime = vlines[-1].close_time
+            med = MarketEventData(event_type=MarketEvent.TOP_DIVERGENCE, event_datetime=event_datetime)
+            #print(med)
+            self.meg.add_event_data(market_event_data=med, timeout=datetime.timedelta(minutes=5))
+
+    def check_trade_speed(self):
+        vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
+        start_td = datetime.timedelta(seconds=0)
+        end_td = datetime.timedelta(seconds=15)
+        trade_total_speed = VlineFeature.calc_vol_speed(vlines=vlines, start_td=start_td, end_td=end_td, direction=Direction.NONE)
+        trade_buy_speed = VlineFeature.calc_vol_speed(vlines=vlines, start_td=start_td, end_td=end_td, direction=Direction.LONG)
+        trade_sell_speed = VlineFeature.calc_vol_speed(vlines=vlines, start_td=start_td, end_td=end_td, direction=Direction.SHORT)
+        self.total_speed = float(np.round(trade_total_speed, 4))
+        self.sell_speed = float(np.round(trade_sell_speed, 4))
+        self.buy_speed = float(np.round(trade_buy_speed, 4))
+
+    def check_climb_retreat(self, thresh: float = 100, num_vline: int = 20):
+        vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
+        if len(vlines) < num_vline:
+            self.is_climb = False
+            self.is_retreat = False
+            return
+        vlines20 = vlines[-1*num_vline:]
+        price_gain_vol = 0
+        for vl in vlines20:
+            price_gain_vol += (vl.close_price-vl.open_price)*vl.volume
+        self.is_climb = price_gain_vol > thresh
+        self.is_retreat = price_gain_vol < thresh
 
     def check_hover(self):
         return False
@@ -1706,23 +2089,23 @@ class Nightmare(CtaTemplate):
             self.has_short_liquidation = False
             self.short_liquidation_ts = None
 
-    def update_market_status(self):
-        '''check market status'''
-        kline_1m = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=Interval.MINUTE)
-        if len(kline_1m) < 20:
-            return
-        # check bull market
-        self.check_gain_slip(count=3)
-        #self.is_climb = self.check_climb()
-        #self.is_surge = self.check_surge()
-
-        # check bear market
-        self.is_slip = self.check_slip()
-        self.is_retreat = self.check_retreat()
-        self.is_slump = self.check_slump()
-
-        # check hover market
-        self.is_hover = self.check_hover()
+    # def update_market_status(self):
+    #     '''check market status'''
+    #     kline_1m = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=Interval.MINUTE)
+    #     if len(kline_1m) < 20:
+    #         return
+    #     # check bull market
+    #     self.check_gain_slip(count=3)
+    #     #self.is_climb = self.check_climb()
+    #     #self.is_surge = self.check_surge()
+    #
+    #     # check bear market
+    #     self.is_slip = self.check_slip()
+    #     self.is_retreat = self.check_retreat()
+    #     self.is_slump = self.check_slump()
+    #
+    #     # check hover market
+    #     self.is_hover = self.check_hover()
 
     def update_market_trade(self, time_step: int = 1):
         if not self.is_data_inited:
@@ -1736,10 +2119,6 @@ class Nightmare(CtaTemplate):
 
             for bar in self.kline_buf:
                 self.kqg.update_bar(bar=bar)
-
-                # update kline based features here:
-                #if bar.interval == Interval.MINUTE:
-                #    self.update_kline_feature(bar=bar, interval=Interval.MINUTE)
 
             self.trade_buf = []
             self.kline_buf = []
@@ -1787,7 +2166,10 @@ class Nightmare(CtaTemplate):
             self.max_invest = float(self.max_invest)
             self.total_invest = float(self.total_invest)
             self.pos = float(np.round(self.pos, 3))
-            self.median_vol = float(np.round(self.median_vol, 2))
+            #self.median_vol = float(np.round(self.median_vol, 2))
+            self.median_vol_100 = float(np.round(self.median_vol_100, 2))
+            self.median_vol_1000 = float(np.round(self.median_vol_1000, 2))
+
             if self.stop_loss_price:
                 self.stop_loss_price = float(np.round(self.stop_loss_price, 2))
             if self.take_profit_price:
@@ -1814,28 +2196,33 @@ class Nightmare(CtaTemplate):
             self.update_market_trade(time_step=1)
             self.update_invest_limit()
             #self.update_price_gain_speed_vline(num_vline=3, time_step=1)
-            self.update_spread_vol(time_step=10)
-            self.update_spread(time_step=10)
-            self.update_vol()
-            self.detect_liquidation()
-            self.update_invest_limit()
+            #self.update_spread_vol(time_step=10)
+            #self.update_spread(time_step=10)
+            #self.update_vol()
+            #self.detect_liquidation()
+            #self.update_invest_limit()
+            self.update_volume_feature()
+            self.update_vline_feature()
             self.first_time = False
 
         self.update_market_trade(time_step=1)
-        self.update_spread_vol_vline()
-        self.update_price_gain_speed_vline(num_vline=3, time_step=1)
-        self.update_spread_vol(time_step=10)
-        self.update_spread(time_step=10)
+        self.update_volume_feature()
+        self.update_vline_feature()
+        self.update_vol()
+        #self.update_spread_vol_vline()
+        #self.update_price_gain_speed_vline(num_vline=3, time_step=1)
+        #self.update_spread_vol(time_step=10)
+        #self.update_spread(time_step=10)
         self.release_trading_quota(timestep=5)
 
         if self.timer_count % 1 == 0 and self.timer_count > 10:
             self.sending_count = 0
             if self.last_trade:
                 price = self.last_trade.price
-                self.detect_liquidation()
+                #self.detect_liquidation()
                 self.make_decision(price=price)
 
-            self.re_connect()
+            #self.re_connect()
 
         if self.timer_count % 10 == 0 and self.timer_count > 10:
             # if no market trade, re-subscribe
@@ -1855,14 +2242,15 @@ class Nightmare(CtaTemplate):
                     else:
                         self.write_log(f"行情订阅失败，找不到合约{self.vt_symbol}")
 
-            if self.test_count < 3:
+            if False and self.test_count < 3:
                 self.test_trade()
                 #self.test_count += 1
 
         if self.timer_count % 60 == 0 and self.timer_count > 10:
             print(datetime.datetime.now(tz=MY_TZ))
-            self.update_vol()
-            self.update_break_count()
+            #self.update_volume_feature()
+            #self.update_vol()
+            #self.update_break_count()
 
         if self.timer_count % 60 == 0 and self.timer_count > 10:
             #self.update_invest_position()
