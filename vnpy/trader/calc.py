@@ -39,7 +39,7 @@ class BarFeature:
                 res_spread_vol['spread_vol'] = spread_vol
                 res_spread_vol['total_vol'] = total_vol
                 if total_vol > 0:
-                    res_spread_vol['avg_sv'] = spread_vol/total_vol
+                    res_spread_vol['avg_sv'] = spread_vol / total_vol
                 return res_spread_vol
         else:
             return res_spread_vol
@@ -57,22 +57,23 @@ class VlineFeature:
         total_vol = 0.0
         if len(vlines) == 0:
             return total_vol
+
+        def vol_func(x):
+            if direction == Direction.LONG:
+                return x.buy_volume
+            elif direction == Direction.SHORT:
+                return x.sell_volume
+            else:
+                return x.volume
+
         if start_td is not None and end_td is not None:
             cur_td = timedelta(seconds=0)
             for vl in reversed(vlines):
                 cur_td += vl.close_time - vl.open_time
-                #print(cur_td)
                 if start_td <= cur_td <= end_td:
-                    if direction == Direction.LONG:
-                        total_vol += vl.buy_volume
-                    elif direction == Direction.SHORT:
-                        total_vol += vl.sell_volume
-                    else:
-                        total_vol += vl.volume
-                elif cur_td > end_td:
+                    total_vol += vol_func(vl)
+                if cur_td > end_td:
                     break
-                else:
-                    pass
         else:
             if start is None:
                 start = 0
@@ -80,84 +81,92 @@ class VlineFeature:
                 end = len(vlines)
             if start < end <= len(vlines) and start <= len(vlines):
                 vlines_start_end = vlines[start: end]
-                if direction == Direction.LONG:
-                    total_vol = float(np.sum([vl.buy_volume for vl in vlines_start_end]))
-                elif direction == Direction.SHORT:
-                    total_vol = float(np.sum([vl.sell_volume for vl in vlines_start_end]))
-                else:
-                    total_vol = float(np.sum([vl.volume for vl in vlines_start_end]))
-        return total_vol
+                total_vol = float(np.sum([vol_func(vl) for vl in vlines_start_end]))
+        res = {'total_vol': total_vol}
+        return res
 
     @staticmethod
     def spread_vol(x: VlineData, d: Direction):
         return (x.close_price - x.open_price) / x.open_price * x.volume
 
     @staticmethod
-    def calc_spread_vline(vlines=[], start: int = None, end: int = None,
-                          start_td: timedelta = None, end_td: timedelta = None,
-                          direction=Direction.NONE) -> float:
+    def calc_spread(vlines=[], start: int = None, end: int = None, start_td: timedelta = None,
+                    end_td: timedelta = None) -> float:
+        spread = 0
+        def spread_func(x): return (x.close_price - x.open_price) / x.open_price
+        if start_td is not None and end_td is not None:
+            cur_td = timedelta(seconds=0)
+            for vl in reversed(vlines):
+                cur_td += vl.close_time - vl.open_time
+                if start_td <= cur_td <= end_td:
+                    spread += spread_func(vl)
+                if cur_td > end_td:
+                    break
+        else:
+            if start is None:
+                start = 0
+            if end is None:
+                end = len(vlines)
+            if start <= end <= len(vlines):
+                vlines_start_end = vlines[start: end]
+                spread = np.sum(spread_func(vl) for vl in vlines_start_end)
+        res = {'spread': float(spread)}
+        return res
+
+    @staticmethod
+    def calc_spread_vol(vlines=[], start: int = None, end: int = None,
+                        start_td: timedelta = None, end_td: timedelta = None,
+                        direction=Direction.NONE) -> float:
         total_vol = 0
         spread_vol = 0
         avg_spread_vol = 0
+
+        def sv_func(x):
+            if direction == Direction.LONG:
+                return (x.close_price - x.open_price) / x.open_price * x.buy_volume
+            elif direction == Direction.SHORT:
+                return (x.close_price - x.open_price) / x.open_price * x.sell_volume
+            else:
+                return (x.close_price - x.open_price) / x.open_price * x.volume
+
+        def vol_func(x):
+            if direction == Direction.LONG:
+                return x.buy_volume
+            elif direction == Direction.SHORT:
+                return x.sell_volume
+            else:
+                return x.volume
 
         if start_td is not None and end_td is not None:
             cur_td = timedelta(seconds=0)
             for vl in reversed(vlines):
                 cur_td += vl.close_time - vl.open_time
                 if start_td <= cur_td <= end_td:
-                    if direction == Direction.LONG:
-                        spread_vol += (vl.close_price - vl.open_price) / vl.open_price * vl.buy_volume
-                    elif direction == Direction.SHORT:
-                        spread_vol += (vl.close_price - vl.open_price) / vl.open_price * vl.sell_volume
-                    else:
-                        spread_vol += (vl.close_price - vl.open_price) / vl.open_price * vl.volume
-                    total_vol = VlineFeature.calc_vol(vlines=vlines,
-                                                      start_td=start_td, end_td=end_td,
-                                                      direction=direction)
-                    if total_vol > 0:
-                        avg_spread_vol = spread_vol / total_vol
-                elif cur_td > end_td:
-                    break
-                else:
-                    pass
+                    spread_vol += sv_func(vl)
+                    total_vol += vol_func(vl)
+            if total_vol > 0:
+                avg_spread_vol = spread_vol / total_vol
         else:
             if start is None:
                 start = 0
             if end is None:
                 end = len(vlines)
-            if start < end <= len(vlines) and start <= len(vlines):
+            if start <= end <= len(vlines):
                 vlines_start_end = vlines[start: end]
-                if direction == Direction.LONG:
-                    sv_func = lambda x: (x.close_price - x.open_price) / x.open_price * x.buy_volume
-                    spread_vol = float(np.sum([sv_func(vl) for vl in vlines_start_end]))
-                elif direction == Direction.SHORT:
-                    sv_func = lambda x: (x.close_price - x.open_price) / x.open_price * x.sell_volume
-                    spread_vol = float(np.sum([sv_func(vl) for vl in vlines_start_end]))
-                else:
-                    sv_func = lambda x: (x.close_price - x.open_price) / x.open_price * x.volume
-                    spread_vol = float(np.sum([sv_func(vl) for vl in vlines_start_end]))
-                total_vol = VlineFeature.calc_vol(vlines=vlines, start=start, end=end, direction=direction)
+                spread_vol = float(np.sum([sv_func(vl) for vl in vlines_start_end]))
+                total_vol = float(np.sum([vol_func(vl) for vl in vlines_start_end]))
                 if total_vol > 0:
                     avg_spread_vol = spread_vol / total_vol
-        #sv_total = (spread_vol, total_vol, avg_spread_vol)
-        sv_total = {'spread_vol': spread_vol, 'total_vol': total_vol, 'avg_sv': avg_spread_vol}
-        return sv_total
+        res = {'spread_vol': float(spread_vol), 'total_vol': float(total_vol), 'avg_sv': float(avg_spread_vol)}
+        return res
 
     @staticmethod
-    def calc_vol_speed(vlines=[], start_td=timedelta(seconds=0), end_td=timedelta(seconds=10), direction=Direction.NONE):
+    def calc_vol_speed(vlines=[], start_td=timedelta(seconds=0), end_td=timedelta(seconds=10),
+                       direction=Direction.NONE):
         start_td = start_td
         end_td = end_td
         td = end_td - start_td
-        total_vol = VlineFeature.calc_vol(vlines=vlines, start_td=start_td, end_td=end_td, direction=direction)
-        speed = total_vol / td.total_seconds()
-        return speed
-
-    @staticmethod
-    def calc_short_liquidation(vlines=[]) -> MarketEventData:
-        med = MarketEventData()
-        if len(vlines) > 0:
-            pass
-        else:
-            return None
-
-
+        res = VlineFeature.calc_vol(vlines=vlines, start_td=start_td, end_td=end_td, direction=direction)
+        speed = res['total_vol'] / td.total_seconds()
+        res = {'speed': float(speed)}
+        return res
