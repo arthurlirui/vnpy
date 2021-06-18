@@ -79,7 +79,7 @@ class VlineFeature:
                 start = 0
             if end is None:
                 end = len(vlines)
-            if start < end <= len(vlines) and start <= len(vlines):
+            if start < end <= len(vlines):
                 vlines_start_end = vlines[start: end]
                 total_vol = float(np.sum([vol_func(vl) for vl in vlines_start_end]))
         res = {'total_vol': total_vol}
@@ -107,7 +107,7 @@ class VlineFeature:
                 start = 0
             if end is None:
                 end = len(vlines)
-            if start <= end <= len(vlines):
+            if start < end <= len(vlines):
                 vlines_start_end = vlines[start: end]
                 spread = np.sum(spread_func(vl) for vl in vlines_start_end)
         res = {'spread': float(spread)}
@@ -151,7 +151,7 @@ class VlineFeature:
                 start = 0
             if end is None:
                 end = len(vlines)
-            if start <= end <= len(vlines):
+            if start < end <= len(vlines):
                 vlines_start_end = vlines[start: end]
                 spread_vol = float(np.sum([sv_func(vl) for vl in vlines_start_end]))
                 total_vol = float(np.sum([vol_func(vl) for vl in vlines_start_end]))
