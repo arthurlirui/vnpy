@@ -1378,11 +1378,11 @@ class Nightmare(CtaTemplate):
             return
         self.median_vol_100 = float(np.median([kl.amount for kl in kl100]))
         self.median_vol_1000 = float(np.median([kl.amount for kl in kl1000]))
-        self.median_vol = float(min(self.median_vol_100, self.median_vol_1000))
-        self.vol_1m_thresh = 1 * 3 * self.median_vol
-        self.vol_2m_thresh = 2 * 3 * self.median_vol
-        self.vol_3m_thresh = 3 * 3 * self.median_vol
-        self.vol_5m_thresh = 5 * 3 * self.median_vol
+        self.median_vol = float(np.round(min(self.median_vol_100, self.median_vol_1000), 2))
+        self.vol_1m_thresh = 1 * 5 * self.median_vol
+        self.vol_2m_thresh = 2 * 5 * self.median_vol
+        self.vol_3m_thresh = 3 * 5 * self.median_vol
+        self.vol_5m_thresh = 5 * 5 * self.median_vol
 
         # update vol select for price distribution
         vol_list = self.market_params[self.symbol]['vline_vol_list']
@@ -1857,19 +1857,21 @@ class Nightmare(CtaTemplate):
                 #if spread_15s > self.spread_15s_thresh and spread_1m > self.spread_1m_thresh:
                 if spread_1m > self.spread_1m_thresh:
                     self.is_gain = True
+                else:
+                    self.is_gain = False
                 #if spread_15s < -1 * self.spread_15s_thresh and spread_1m < -1 * self.spread_1m_thresh:
                 if spread_1m < -1*self.spread_1m_thresh:
                     self.is_slip = True
+                else:
+                    self.is_slip = False
 
         if self.is_gain:
             event_datetime = vlines[-1].close_time
             med = MarketEventData(event_type=MarketEvent.GAIN, event_datetime=event_datetime)
-            print(spread_1m, med)
             self.meg.add_event_data(market_event_data=med, timeout=datetime.timedelta(minutes=1))
         if self.is_slip:
             event_datetime = vlines[-1].close_time
             med = MarketEventData(event_type=MarketEvent.SLIP, event_datetime=event_datetime)
-            print(spread_1m, med)
             self.meg.add_event_data(market_event_data=med, timeout=datetime.timedelta(minutes=1))
 
     def check_gain_slip(self, res_spread_vol: dict = None,
@@ -1882,28 +1884,6 @@ class Nightmare(CtaTemplate):
         else:
             pass
 
-    # def calc_spread_turn_over_signal(self, num_vline1: int = 1000, num_vline2: int = 5):
-    #     '''1. previous negative spread, 2. receive position spread'''
-    #     vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
-    #     num_vlines = len(vlines)
-    #     if num_vlines < num_vline1 or num_vlines < num_vline2:
-    #         return
-    #     s1 = num_vlines - num_vline1
-    #     e1 = num_vlines - num_vline2
-    #     s2 = num_vlines - num_vline2
-    #     e2 = num_vlines - 1
-    #     spread_vol1 = self.calc_spread_vol_vline(start=s1, end=e1)
-    #     spread_vol2 = self.calc_spread_vol_vline(start=s2, end=e2)
-    #     if spread_vol2 > 0.0001:
-    #         pass
-    #     print()
-    #     print(spread_vol1)
-    #     print(vlines[s1])
-    #     print(vlines[e1])
-    #     print(spread_vol2)
-    #     print(vlines[s2])
-    #     print(vlines[e2])
-
     def check_surge_slump(self, res_spread_vol: dict = None, res_spread: dict = None, res_vol: dict = None,
                           use_kline=False, use_vline=False):
         if use_kline and not use_vline:
@@ -1914,6 +1894,12 @@ class Nightmare(CtaTemplate):
             pass
 
     def check_surge_slump_by_vline(self, res_spread_vol: dict = None, res_spread: dict = None, res_vol: dict = None):
+        def is_surge_func(spread, vol, spread_thresh, vol_thresh):
+            return (spread > spread_thresh) & (vol > vol_thresh)
+
+        def is_slump_func(spread, vol, spread_thresh, vol_thresh):
+            return (spread < -1*spread_thresh) & (vol > vol_thresh)
+
         vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
         if res_spread_vol is not None:
             avg_sv_buy_60s = self.get_spread_vol(res_spread_vol, direction=Direction.LONG, second=60, data_type='avg_sv')
@@ -1946,22 +1932,31 @@ class Nightmare(CtaTemplate):
             vol_2m = self.get_vol(res_vol=res_vol, second=120)
             vol_3m = self.get_vol(res_vol=res_vol, second=180)
             vol_5m = self.get_vol(res_vol=res_vol, second=300)
-            is_price_up = (spread_1m > self.spread_1m_thresh) or (spread_2m > self.spread_2m_thresh) or (spread_3m > self.spread_3m_thresh) or (spread_5m > self.spread_5m_thresh)
-            is_price_down = (spread_1m < -1*self.spread_1m_thresh) or (spread_2m < -1*self.spread_2m_thresh) or (spread_3m < -1*self.spread_3m_thresh) or (spread_5m < -1*self.spread_5m_thresh)
-            is_high_vol = (vol_1m > self.vol_1m_thresh) or (vol_2m > self.vol_2m_thresh) or (vol_3m > self.vol_3m_thresh) or (vol_5m > self.vol_5m_thresh)
-            if is_price_up and is_high_vol:
+
+            is_surge_1m = is_surge_func(spread_1m, vol_1m, self.spread_1m_thresh, self.vol_1m_thresh)
+            is_surge_2m = is_surge_func(spread_2m, vol_2m, self.spread_2m_thresh, self.vol_2m_thresh)
+            is_surge_3m = is_surge_func(spread_3m, vol_3m, self.spread_3m_thresh, self.vol_3m_thresh)
+            is_surge_5m = is_surge_func(spread_5m, vol_5m, self.spread_5m_thresh, self.vol_5m_thresh)
+            is_slump_1m = is_slump_func(spread_1m, vol_1m, self.spread_1m_thresh, self.vol_1m_thresh)
+            is_slump_2m = is_slump_func(spread_2m, vol_2m, self.spread_2m_thresh, self.vol_2m_thresh)
+            is_slump_3m = is_slump_func(spread_3m, vol_3m, self.spread_3m_thresh, self.vol_3m_thresh)
+            is_slump_5m = is_slump_func(spread_5m, vol_5m, self.spread_5m_thresh, self.vol_5m_thresh)
+
+            if is_surge_1m or is_surge_2m or is_surge_3m or is_surge_5m:
                 self.is_surge = True
             else:
                 self.is_surge = False
-            if is_price_down and is_high_vol:
+
+            if is_slump_1m or is_slump_2m or is_slump_3m or is_slump_5m:
                 self.is_slump = True
             else:
-                self.is_surge = False
+                self.is_slump = False
 
         if self.is_surge:
             event_datetime = vlines[-1].close_time
             med = MarketEventData(event_type=MarketEvent.SURGE, event_datetime=event_datetime)
             self.meg.add_event_data(market_event_data=med, timeout=datetime.timedelta(minutes=3))
+
         if self.is_slump:
             event_datetime = vlines[-1].close_time
             med = MarketEventData(event_type=MarketEvent.SLUMP, event_datetime=event_datetime)
