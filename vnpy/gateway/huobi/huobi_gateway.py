@@ -876,7 +876,7 @@ class HuobiWebsocketApiBase(WebsocketClient):
 
     def on_login(self, packet: dict) -> None:
         """"""
-        pass
+        print(packet)
 
     @staticmethod
     def unpack_data(data):
@@ -985,9 +985,10 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
         #self.gateway.trade_ws_api.stop()
 
         self.disconnect_count += 1
-        time.sleep(10 * (self.disconnect_count + 1))
+        #time.sleep(10 * (self.disconnect_count + 1))
+        time.sleep(1)
         if self.disconnect_count > 5:
-            time.sleep(300)
+            time.sleep(30)
             self.disconnect_count = 0
 
         self.login()
@@ -1003,7 +1004,7 @@ class HuobiTradeWebsocketApi(HuobiWebsocketApiBase):
 
     def on_login(self, packet: dict) -> None:
         """"""
-        print('交易', packet)
+        #print('交易', packet)
         if "data" in packet and not packet["data"]:
             self.gateway.write_log("交易Websocket API登录成功")
             self.subscribe_account_update()
@@ -1385,15 +1386,16 @@ class HuobiDataWebsocketApi(HuobiWebsocketApiBase):
         self.gateway.write_log("行情Websocket API失去连接")
         print("行情Websocket API失去连接")
         self.disconnect_count += 1
-        time.sleep(10*(self.disconnect_count+1))
+        #time.sleep(10*(self.disconnect_count+1))
+        time.sleep(1)
         if self.disconnect_count > 5:
-            time.sleep(300)
+            time.sleep(30)
             self.disconnect_count = 0
 
         self.login()
         self.connect(key=self.key, secret=self.secret, proxy_host=self.proxy_host, proxy_port=self.proxy_port)
         for symbol in self.klines:
-            self.gateway.write_log(f"Data Subscribe {symbol}")
+            self.gateway.write_log(f"data subscribe {symbol}")
             req = SubscribeRequest(symbol=symbol, exchange=Exchange.HUOBI)
             self.subscribe(req=req)
 
