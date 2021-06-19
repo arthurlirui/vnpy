@@ -1,29 +1,33 @@
 from vnpy.trader.constant import Direction
-from vnpy.trader.object import TradeData, OrderData, TickData
-from vnpy.trader.object import VlineData, BarData, PositionData, MarketEventData, AccountData, BalanceData, OrderBookData
 from vnpy.trader.engine import BaseEngine
 from vnpy.app.algo_trading import AlgoTemplate
 from vnpy.trader.utility import VlineGenerator, MarketEventGenerator, VlineQueueGenerator, BarQueueGenerator
-from pprint import pprint
-from vnpy.trader.object import HistoryRequest
 from typing import Any, Callable
-from pprint import pprint
-import math
 from scipy.signal import argrelextrema, argrelmin, argrelmax
 import numpy as np
-import random
-import datetime
+import random, math, datetime, os
 import matplotlib.pyplot as plt
 #from scipy.misc import electrocardiogram
 from scipy.signal import find_peaks
 from pprint import pprint
-import os
 from termcolor import colored
-from vnpy.trader.calc import VlineFeature
-
+#from vnpy.trader.calc import VlineFeature, BarFeature
 from vnpy.trader.utility import load_json, save_json
 
-from vnpy.trader.object import (SubscribeRequest)
+from vnpy.trader.object import (
+    SubscribeRequest,
+    TradeData,
+    OrderData,
+    TickData,
+    VlineData,
+    BarData,
+    PositionData,
+    MarketEventData,
+    AccountData,
+    BalanceData,
+    OrderBookData,
+    HistoryRequest
+)
 
 from vnpy.trader.constant import (
     Direction,
@@ -74,9 +78,14 @@ class Nightmare(CtaTemplate):
     has_short_liquidation = False
     has_long_liquidation = False
     parameters = ['base_currency', 'quote_currency', 'exchange', 'vline_vol', 'total_invest',
-                  'sv_0_3_thresh', 'sv_3_20_thresh', 'sv_buy_15s_thresh', 'sv_sell_15s_thresh',
-                  'sv_buy_60s_thresh', 'sv_sell_60s_thresh', 'sv_buy_120s_thresh', 'sv_buy_120s_thresh',
-                  'sv_buy_180s_thresh', 'sv_buy_180s_thresh',
+                  'spread_15s_thresh', 'spread_1m_thresh', 'spread_2m_thresh',
+                  'spread_3m_thresh', 'spread_5m_thresh',
+                  'vol_1m_thresh', 'vol_2m_thresh', 'vol_3m_thresh', 'vol_5m_thresh'
+                  #'sv_0_3_thresh', 'sv_3_20_thresh',
+                  #'sv_buy_15s_thresh', 'sv_sell_15s_thresh',
+                  #'sv_buy_60s_thresh', 'sv_sell_60s_thresh',
+                  #'sv_buy_120s_thresh', 'sv_buy_120s_thresh',
+                  #'sv_buy_180s_thresh', 'sv_buy_180s_thresh',
                   #'trade_amount', 'global_prob', 'max_break_count',
                   #'trade_gain_thresh', 'trade_speed_thresh',
                   #'sv_t3', 'sv_t5', 'sv_t10', 'sv_t20', 's_t3', 's_t5', 's_t10', 's_t20'
@@ -157,141 +166,13 @@ class Nightmare(CtaTemplate):
         # init buffer for saving trades and klines
         self.his_trade_buf = {}
         self.his_kline_buf = {}
-
-        # init vline queue generator
-        self.vqg = {}
-        self.init_vline_queue_generator()
-
-        # init vline generator
-        self.vg = {}
-        self.init_vline_generator()
-        self.kqg = BarQueueGenerator()
-
-        # market event generator
-        self.meg = MarketEventGenerator(on_event=self.on_market_event)
-
-        self.is_data_inited = False
-
         self.last_tick = None
         self.last_trade = None
 
-        # init internal parameters
-        self.timer_count = 0
-        self.test_count = 0
-
-        self.theta = 0.01
-        self.buy_prob = 0
-        self.sell_prob = 0
-
-        # init invest position (usdt unit)
-        #self.total_invest = 400.0
-        self.max_invest = 100.0
-        self.min_invest = 0
-        self.cur_invest = 0
-        self.target_invest = 0
-
-        # init price break count
-        self.max_break_count = 4
-        self.upper_break_count = self.max_break_count
-        self.lower_break_count = self.max_break_count
-        self.upper_break = True
-        self.lower_break = True
-
-        # previous buy or sell price
-        self.prev_buy_price = None
-        self.prev_buy_time = None
-        self.prev_sell_price = None
-        self.prev_sell_time = None
-
-        # previous high and low peaks
-        self.prev_high_price = None
-        self.prev_high_time = None
-        self.prev_low_price = None
-        self.prev_low_time = None
-
-        self.is_chase_up = False
-        self.is_kill_down = False
-
-        # trading quota
-        self.trading_quota = True
-
-        # market signal
-        # bull market
-        self.is_gain = False
-        self.is_climb = False
-        self.is_surge = False
-
-        # hover market
-        self.is_hover = False
-
-        # bear market
-        self.is_slip = False
-        self.is_retreat = False
-        self.is_slump = False
-        self.is_bottom_divergence = False
-        self.is_top_divergence = False
-
-        #
-        self.buy_price = None
-        self.sell_price = None
-        self.vol_select = self.market_params[self.symbol]['vline_vol_list'][0]
-        self.median_vol = None
-        self.median_vol_100 = None
-        self.median_vol_1000 = None
-        self.total_speed = None
-        self.buy_speed = None
-        self.sell_speed = None
-
-        # liquidation signal
-        self.has_short_liquidation = False
-        self.has_long_liquidation = False
-        self.short_liquidation_ts = None
-        self.long_liquidation_ts = None
-
-        self.is_price_going_down = False
-        self.is_price_going_up = False
-        self.is_high_vol = False
-        self.is_high_trade_speed = False
-
-        # sending count
-        self.sending_count = 0
-        self.max_sending_count = 4
-
-        # buying or selling volume
-        self.short_term_trading_vol = 0.1 * self.total_invest
-        self.cur_buy_vol = 0
-        self.cur_sell_vol = 0
-
-        # position update time
-        self.update_invest_limit_time = None
-
-        # stop loss price
-        self.stop_loss_price = None
-        self.take_profit_price = None
-
-        # flag for first time initial parameters
-        self.first_time = True
-
-        self.has_slow_suck_quota = True
-        self.has_slow_sell_quota = True
-
-        # kline based features
-        self.kline_phase1 = 20
-        self.kline_phase2 = 3
-        self.spread_vol1 = []
-        self.spread_vol2 = []
-        self.kline_phase = [3, 10, 20]
-        self.spread_vol = {}
-        self.kline_feature = {}
-        self.kline_feature['spread_vol'] = {}
-        for kp in self.kline_phase:
-            self.spread_vol[kp] = []
-
-        # for symbol in self.symbols:
-        #     if self.exchange == 'HUOBI':
-        #         req = SubscribeRequest(symbol=symbol, exchange=Exchange.HUOBI)
-        #         self.cta_engine.main_engine.subscribe(req, 'HUOBI')
-        #         self.write_log(f"行情订阅{symbol}")
+        # init generator for kline, vline, market event
+        self.init_generator()
+        self.init_algo_param()
+        self.init_flag()
         self.init_thresh()
         self.init_data()
 
@@ -314,7 +195,134 @@ class Nightmare(CtaTemplate):
                 self.his_trade_buf[vt_sym] = []
                 self.his_kline_buf[vt_sym] = []
 
+    def init_generator(self):
+        # init vline queue generator
+        self.vqg = {}
+        self.init_vline_queue_generator()
+
+        # init vline generator
+        self.vg = {}
+        self.init_vline_generator()
+        self.kqg = BarQueueGenerator()
+
+        # market event generator
+        self.meg = MarketEventGenerator(on_event=self.on_market_event)
+
+    def init_algo_param(self):
+        # init internal parameters
+        self.timer_count = 0
+        self.test_count = 0
+
+        # init buy sell price for vline
+        self.theta = 0.01
+        self.buy_prob = 0
+        self.sell_prob = 0
+
+        # init invest position (usdt unit)
+        self.min_invest = 0
+        self.max_invest = 100.0
+        self.cur_invest = 0
+        self.total_invest = 1500.0
+
+        # init price break count
+        self.max_break_count = 4
+        self.upper_break_count = self.max_break_count
+        self.lower_break_count = self.max_break_count
+        self.upper_break = True
+        self.lower_break = True
+
+        # trading speed
+        self.total_speed = None
+        self.buy_speed = None
+        self.sell_speed = None
+
+    def init_flag(self):
+        # market status flags
+        self.is_data_inited = False
+
+        # bull market
+        self.is_gain = False
+        self.is_climb = False
+        self.is_surge = False
+
+        # hover market
+        self.is_hover = False
+
+        # bear market
+        self.is_slip = False
+        self.is_retreat = False
+        self.is_slump = False
+        self.is_bottom_divergence = False
+        self.is_top_divergence = False
+
+        # flag for first time initial parameters
+        self.first_time = True
+        self.has_slow_suck_quota = True
+        self.has_slow_sell_quota = True
+
+        # trading quota
+        self.trading_quota = True
+
+        # liquidation signal
+        self.has_short_liquidation = False
+        self.has_long_liquidation = False
+        self.short_liquidation_ts = None
+        self.long_liquidation_ts = None
+
+        self.is_price_going_down = False
+        self.is_price_going_up = False
+        self.is_high_vol = False
+        self.is_high_trade_speed = False
+
     def init_thresh(self):
+        # spread thresh
+        self.base_spread_thresh = 0.01
+        self.spread_15s_thresh = 0.025 * self.base_spread_thresh
+        self.spread_1m_thresh = 0.1 * self.base_spread_thresh
+        self.spread_2m_thresh = 0.2 * self.base_spread_thresh
+        self.spread_3m_thresh = 0.3 * self.base_spread_thresh
+        self.spread_5m_thresh = 0.5 * self.base_spread_thresh
+
+        # volume thresh
+        self.base_volume_thresh = 30
+        self.vol_1m_thresh = 1 * self.base_volume_thresh
+        self.vol_2m_thresh = 2 * self.base_volume_thresh
+        self.vol_3m_thresh = 3 * self.base_volume_thresh
+        self.vol_5m_thresh = 5 * self.base_volume_thresh
+
+        # spread vol thresh
+        self.base_spread_vol_thresh = 0.0001
+        self.sv_1m_thresh = 1 * self.base_spread_vol_thresh
+        self.sv_2m_thresh = 1 * self.base_spread_vol_thresh
+        self.sv_3m_thresh = 1 * self.base_spread_vol_thresh
+        self.sv_5m_thresh = 1 * self.base_spread_vol_thresh
+
+        # thresh for volume
+        self.vol_select = self.market_params[self.symbol]['vline_vol_list'][0]
+        self.median_vol = None
+        self.median_vol_100 = None
+        self.median_vol_1000 = None
+
+        # thresh for trading speed
+        self.buy_price = None
+        self.sell_price = None
+
+        # sending count
+        self.sending_count = 0
+        self.max_sending_count = 4
+
+        # buying or selling volume
+        self.short_term_trading_vol = 0.1 * self.total_invest
+        self.cur_buy_vol = 0
+        self.cur_sell_vol = 0
+
+        # position update time
+        self.update_invest_limit_time = None
+
+        # stop loss price
+        self.stop_loss_price = None
+        self.take_profit_price = None
+
         # trading speed
         self.trade_speed = -1
         self.trade_gain = -1
@@ -525,7 +533,6 @@ class Nightmare(CtaTemplate):
             else:
                 print(colored(trade, color='red'))
 
-
         #self.check_price_break(price=price, direction=Direction.LONG, use_vline=True)
         #self.check_price_break(price=price, direction=Direction.SHORT, use_vline=True)
 
@@ -563,7 +570,6 @@ class Nightmare(CtaTemplate):
                 print(colored(vline, color='red'))
 
         #self.update_vline_feature()
-
         #res_spread_vol = self.update_spread_vol_vline(start_second=0, seconds=[15, 60, 120, 180, 600, 1200])
         #print(res_spread_vol)
         #vol = self.market_params[self.symbol]['vline_vol']
@@ -706,17 +712,17 @@ class Nightmare(CtaTemplate):
                 ratio_prob = 1.0
         return ratio_prob
 
-    def check_lower_break(self):
-        ratio = 0.0
-        if self.lower_break:
-            ratio = 1.0
-        return ratio
-
-    def check_upper_break(self):
-        ratio = 0.0
-        if self.upper_break:
-            ratio = 1.0
-        return ratio
+    # def check_lower_break(self):
+    #     ratio = 0.0
+    #     if self.lower_break:
+    #         ratio = 1.0
+    #     return ratio
+    #
+    # def check_upper_break(self):
+    #     ratio = 0.0
+    #     if self.upper_break:
+    #         ratio = 1.0
+    #     return ratio
 
     def check_quota(self):
         ratio = 0.0
@@ -724,195 +730,195 @@ class Nightmare(CtaTemplate):
             ratio = 1.0
         return ratio
 
-    def check_fall_down(self, price: float):
-        td30m = datetime.timedelta(minutes=30)
-        prev_sell_price, prev_sell_pos, prev_sell_timedelta = self.calc_avg_trade_price(direction=Direction.SHORT, timedelta=td30m)
-        ratio_fall_down = 0.0
-        if prev_sell_pos > 0 and price > 0.98 * prev_sell_price:
-            ratio_fall_down = min(max((0.98 - price / prev_sell_price) * 100 * 0.1, 0), 4)
-        ratio = ratio_fall_down
-        return ratio
+    # def check_fall_down(self, price: float):
+    #     td30m = datetime.timedelta(minutes=30)
+    #     prev_sell_price, prev_sell_pos, prev_sell_timedelta = self.calc_avg_trade_price(direction=Direction.SHORT, timedelta=td30m)
+    #     ratio_fall_down = 0.0
+    #     if prev_sell_pos > 0 and price > 0.98 * prev_sell_price:
+    #         ratio_fall_down = min(max((0.98 - price / prev_sell_price) * 100 * 0.1, 0), 4)
+    #     ratio = ratio_fall_down
+    #     return ratio
+    #
+    # def check_price_break_vline(self, price: float, direction: Direction, num_vline: int = 10):
+    #     if not self.is_data_inited:
+    #         return
+    #     # detect vline
+    #     vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
+    #     if len(vlines) < num_vline:
+    #         return
+    #     min_price = np.min([vl.low_price for vl in vlines[-1 * num_vline:]])
+    #     max_price = np.max([vl.high_price for vl in vlines[-1 * num_vline:]])
+    #     self.pos = self.vqg[self.vt_symbol].vq[self.vol_select].less_vol(price=price)
+    #     if direction == Direction.LONG:
+    #         if price <= min_price:
+    #             self.lower_break_count = int(1.0 * self.max_break_count)
+    #             self.lower_break = True
+    #     elif direction == Direction.SHORT:
+    #         if price >= max_price:
+    #             self.upper_break_count = int(1.0 * self.max_break_count)
+    #             self.upper_break = True
+    #     else:
+    #         pass
 
-    def check_price_break_vline(self, price: float, direction: Direction, num_vline: int = 10):
-        if not self.is_data_inited:
-            return
-        # detect vline
-        vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
-        if len(vlines) < num_vline:
-            return
-        min_price = np.min([vl.low_price for vl in vlines[-1 * num_vline:]])
-        max_price = np.max([vl.high_price for vl in vlines[-1 * num_vline:]])
-        self.pos = self.vqg[self.vt_symbol].vq[self.vol_select].less_vol(price=price)
-        if direction == Direction.LONG:
-            if price <= min_price:
-                self.lower_break_count = int(1.0 * self.max_break_count)
-                self.lower_break = True
-        elif direction == Direction.SHORT:
-            if price >= max_price:
-                self.upper_break_count = int(1.0 * self.max_break_count)
-                self.upper_break = True
-        else:
-            pass
+    # def check_price_break_kline(self, price: float, direction: Direction, num_kline: int = 20):
+    #     if not self.is_data_inited:
+    #         return
+    #     # detect kline
+    #     kline_1m = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=Interval.MINUTE)
+    #     if len(kline_1m) < num_kline:
+    #         return
+    #
+    #     min_price = np.min([kl.low_price for kl in kline_1m[-1*num_kline:]])
+    #     max_price = np.max([kl.high_price for kl in kline_1m[-1*num_kline:]])
+    #     self.pos = self.vqg[self.vt_symbol].vq[self.vol_select].less_vol(price=price)
+    #
+    #     if direction == Direction.LONG:
+    #         if price <= min_price:
+    #             self.lower_break_count = int(1.0 * self.max_break_count)
+    #             self.lower_break = True
+    #     elif direction == Direction.SHORT:
+    #         if price >= max_price:
+    #             self.upper_break_count = int(1.0 * self.max_break_count)
+    #             self.upper_break = True
+    #     else:
+    #         pass
 
-    def check_price_break_kline(self, price: float, direction: Direction, num_kline: int = 20):
-        if not self.is_data_inited:
-            return
-        # detect kline
-        kline_1m = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=Interval.MINUTE)
-        if len(kline_1m) < num_kline:
-            return
+    # def check_price_break(self, price: float, direction: Direction,
+    #                       use_vline: bool = True, use_kline: bool = True,
+    #                       num_kline: int = 10,
+    #                       num_vline: int = 10):
+    #     if not self.is_data_inited:
+    #         return
+    #     # detect kline
+    #     if use_vline:
+    #         self.check_price_break_vline(price=price, direction=direction, num_vline=num_vline)
+    #     if use_kline:
+    #         self.check_price_break_kline(price=price, direction=direction, num_kline=num_kline)
+    #
+    # def check_min_max_price(self, price: float, direction: Direction):
+    #     '''check min max price in previous time duration'''
+    #     bars1m = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=Interval.MINUTE)
+    #     bars1m_data = bars1m[-360:]
+    #     min_price = min([bar.low_price for bar in bars1m_data])
+    #     max_price = max([bar.high_price for bar in bars1m_data])
+    #     ratio = 0.0
+    #     if direction == Direction.LONG:
+    #         if 0.90 * max_price < price < 0.95 * max_price:
+    #             ratio = 0.5
+    #         elif 0.85 * max_price < price < 0.90 * max_price:
+    #             ratio = 1.0
+    #         elif 0.80 * max_price < price < 0.85 * max_price:
+    #             ratio = 1.5
+    #         elif price < 0.80 * max_price:
+    #             ratio = 2.0
+    #         else:
+    #             ratio = 0.0
+    #     elif direction == Direction.SHORT:
+    #         if 1.05 * min_price < price < 1.10 * min_price:
+    #             ratio = 0.5
+    #         elif 1.10 * min_price < price < 1.15 * min_price:
+    #             ratio = 1.0
+    #         elif 1.15 * min_price < price < 1.20 * min_price:
+    #             ratio = 1.5
+    #         elif price > 1.20 * min_price:
+    #             ratio = 2.0
+    #         else:
+    #             ratio = 0.0
+    #     return ratio
 
-        min_price = np.min([kl.low_price for kl in kline_1m[-1*num_kline:]])
-        max_price = np.max([kl.high_price for kl in kline_1m[-1*num_kline:]])
-        self.pos = self.vqg[self.vt_symbol].vq[self.vol_select].less_vol(price=price)
+    # def check_prev_high_low_price(self, price: float,
+    #                               direction: Direction,
+    #                               timedelta: datetime.timedelta = datetime.timedelta(minutes=30)):
+    #     '''check previous high and low price'''
+    #     ratio_base = 0.2
+    #     ratio_high = 0.0
+    #     ratio_low = 0.0
+    #     ratio = 1.0
+    #     datetime_now = datetime.datetime.now(tz=MY_TZ)
+    #     if direction == Direction.LONG:
+    #         if self.prev_high_price and self.prev_high_time and datetime_now > self.prev_high_time + timedelta:
+    #             ratio_high = min(max((0.95-price/self.prev_high_price)*100*ratio_base, 0), 4)
+    #             ratio_high = float(np.round(ratio_high, 4))
+    #         if self.prev_low_price:
+    #             ratio_low = min(max((1.01-price/self.prev_low_price)*100*ratio_base, 0), 4)
+    #             ratio_low = float(np.round(ratio_low, 4))
+    #         ratio = max(ratio_low, ratio_high)
+    #     elif direction == Direction.SHORT:
+    #         if self.prev_low_price and self.prev_low_time and datetime_now > self.prev_low_time + timedelta:
+    #             ratio_low = min(max((price/self.prev_low_price-1.05)*100*ratio_base, 0), 4)
+    #             ratio_low = float(np.round(ratio_low, 4))
+    #         if self.prev_high_price:
+    #             ratio_high = min(max((price/self.prev_high_price-0.99)*100*ratio_base, 0), 4)
+    #             ratio_high = float(np.round(ratio_high, 4))
+    #         ratio = max(ratio_high, ratio_low)
+    #     return ratio
 
-        if direction == Direction.LONG:
-            if price <= min_price:
-                self.lower_break_count = int(1.0 * self.max_break_count)
-                self.lower_break = True
-        elif direction == Direction.SHORT:
-            if price >= max_price:
-                self.upper_break_count = int(1.0 * self.max_break_count)
-                self.upper_break = True
-        else:
-            pass
+    # def check_prev_buy_sell_price(self, price: float,
+    #                               direction: Direction,
+    #                               timedelta: datetime.timedelta = datetime.timedelta(minutes=10)):
+    #     '''check previous buy and sell price'''
+    #     ratio = 1.0
+    #     datetime_now = datetime.datetime.now(tz=MY_TZ)
+    #     ratio_buy = 1.0
+    #     ratio_sell = 1.0
+    #     if direction == Direction.LONG:
+    #         if self.prev_buy_price and self.prev_buy_time and datetime_now < self.prev_buy_time + timedelta:
+    #             if 0.98 * self.prev_buy_price < price < 0.99 * self.prev_buy_price:
+    #                 ratio_buy = 0.5
+    #             elif 0.95 * self.prev_buy_price < price < 0.98 * self.prev_buy_price:
+    #                 ratio_buy = 1.0
+    #             elif 0.90 * self.prev_buy_price < price < 0.95 * self.prev_buy_price:
+    #                 ratio_buy = 1.5
+    #             elif price < 0.90 * self.prev_buy_price:
+    #                 ratio_buy = 2.0
+    #             else:
+    #                 ratio_buy = 0.0
+    #         if self.prev_buy_time and datetime_now > self.prev_buy_time + timedelta:
+    #             ratio_buy = 0.4
+    #         ratio = ratio_buy
+    #     if direction == Direction.SHORT:
+    #         if self.prev_sell_price and self.prev_sell_time and datetime_now < self.prev_sell_time + timedelta:
+    #             if 0.99 * self.prev_sell_price < price < 1.01 * self.prev_sell_price:
+    #                 ratio_sell = 0.5
+    #             elif 1.01 * self.prev_sell_price < price < 1.05 * self.prev_sell_price:
+    #                 ratio_sell = 1.0
+    #             elif 1.05 * self.prev_sell_price < price < 1.10 * self.prev_sell_price:
+    #                 ratio_sell = 1.5
+    #             elif price > 1.10 * self.prev_sell_price:
+    #                 ratio_sell = 2.0
+    #             else:
+    #                 ratio_sell = 0.0
+    #         if self.prev_sell_time and datetime_now > self.prev_sell_time + timedelta:
+    #             ratio_sell = 0.4
+    #         ratio = ratio_sell
+    #     return ratio
 
-    def check_price_break(self, price: float, direction: Direction,
-                          use_vline: bool = True, use_kline: bool = True,
-                          num_kline: int = 10,
-                          num_vline: int = 10):
-        if not self.is_data_inited:
-            return
-        # detect kline
-        if use_vline:
-            self.check_price_break_vline(price=price, direction=direction, num_vline=num_vline)
-        if use_kline:
-            self.check_price_break_kline(price=price, direction=direction, num_kline=num_kline)
-
-    def check_min_max_price(self, price: float, direction: Direction):
-        '''check min max price in previous time duration'''
-        bars1m = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=Interval.MINUTE)
-        bars1m_data = bars1m[-360:]
-        min_price = min([bar.low_price for bar in bars1m_data])
-        max_price = max([bar.high_price for bar in bars1m_data])
-        ratio = 0.0
-        if direction == Direction.LONG:
-            if 0.90 * max_price < price < 0.95 * max_price:
-                ratio = 0.5
-            elif 0.85 * max_price < price < 0.90 * max_price:
-                ratio = 1.0
-            elif 0.80 * max_price < price < 0.85 * max_price:
-                ratio = 1.5
-            elif price < 0.80 * max_price:
-                ratio = 2.0
-            else:
-                ratio = 0.0
-        elif direction == Direction.SHORT:
-            if 1.05 * min_price < price < 1.10 * min_price:
-                ratio = 0.5
-            elif 1.10 * min_price < price < 1.15 * min_price:
-                ratio = 1.0
-            elif 1.15 * min_price < price < 1.20 * min_price:
-                ratio = 1.5
-            elif price > 1.20 * min_price:
-                ratio = 2.0
-            else:
-                ratio = 0.0
-        return ratio
-
-    def check_prev_high_low_price(self, price: float,
-                                  direction: Direction,
-                                  timedelta: datetime.timedelta = datetime.timedelta(minutes=30)):
-        '''check previous high and low price'''
-        ratio_base = 0.2
-        ratio_high = 0.0
-        ratio_low = 0.0
-        ratio = 1.0
-        datetime_now = datetime.datetime.now(tz=MY_TZ)
-        if direction == Direction.LONG:
-            if self.prev_high_price and self.prev_high_time and datetime_now > self.prev_high_time + timedelta:
-                ratio_high = min(max((0.95-price/self.prev_high_price)*100*ratio_base, 0), 4)
-                ratio_high = float(np.round(ratio_high, 4))
-            if self.prev_low_price:
-                ratio_low = min(max((1.01-price/self.prev_low_price)*100*ratio_base, 0), 4)
-                ratio_low = float(np.round(ratio_low, 4))
-            ratio = max(ratio_low, ratio_high)
-        elif direction == Direction.SHORT:
-            if self.prev_low_price and self.prev_low_time and datetime_now > self.prev_low_time + timedelta:
-                ratio_low = min(max((price/self.prev_low_price-1.05)*100*ratio_base, 0), 4)
-                ratio_low = float(np.round(ratio_low, 4))
-            if self.prev_high_price:
-                ratio_high = min(max((price/self.prev_high_price-0.99)*100*ratio_base, 0), 4)
-                ratio_high = float(np.round(ratio_high, 4))
-            ratio = max(ratio_high, ratio_low)
-        return ratio
-
-    def check_prev_buy_sell_price(self, price: float,
-                                  direction: Direction,
-                                  timedelta: datetime.timedelta = datetime.timedelta(minutes=10)):
-        '''check previous buy and sell price'''
-        ratio = 1.0
-        datetime_now = datetime.datetime.now(tz=MY_TZ)
-        ratio_buy = 1.0
-        ratio_sell = 1.0
-        if direction == Direction.LONG:
-            if self.prev_buy_price and self.prev_buy_time and datetime_now < self.prev_buy_time + timedelta:
-                if 0.98 * self.prev_buy_price < price < 0.99 * self.prev_buy_price:
-                    ratio_buy = 0.5
-                elif 0.95 * self.prev_buy_price < price < 0.98 * self.prev_buy_price:
-                    ratio_buy = 1.0
-                elif 0.90 * self.prev_buy_price < price < 0.95 * self.prev_buy_price:
-                    ratio_buy = 1.5
-                elif price < 0.90 * self.prev_buy_price:
-                    ratio_buy = 2.0
-                else:
-                    ratio_buy = 0.0
-            if self.prev_buy_time and datetime_now > self.prev_buy_time + timedelta:
-                ratio_buy = 0.4
-            ratio = ratio_buy
-        if direction == Direction.SHORT:
-            if self.prev_sell_price and self.prev_sell_time and datetime_now < self.prev_sell_time + timedelta:
-                if 0.99 * self.prev_sell_price < price < 1.01 * self.prev_sell_price:
-                    ratio_sell = 0.5
-                elif 1.01 * self.prev_sell_price < price < 1.05 * self.prev_sell_price:
-                    ratio_sell = 1.0
-                elif 1.05 * self.prev_sell_price < price < 1.10 * self.prev_sell_price:
-                    ratio_sell = 1.5
-                elif price > 1.10 * self.prev_sell_price:
-                    ratio_sell = 2.0
-                else:
-                    ratio_sell = 0.0
-            if self.prev_sell_time and datetime_now > self.prev_sell_time + timedelta:
-                ratio_sell = 0.4
-            ratio = ratio_sell
-        return ratio
-
-    def check_profit(self, price: float):
-        '''check profit'''
-        avail_volume = self.get_current_position(base=True, available=True)
-        prev_buy_price, prev_buy_pos, prev_buy_timedelta = self.calc_avg_trade_price(direction=Direction.LONG, vol=avail_volume, timedelta=datetime.timedelta(minutes=180))
-        datetime_now = datetime.datetime.now(tz=MY_TZ)
-        prev_buy_time = datetime_now - prev_buy_timedelta
-        holding_time = datetime.timedelta(minutes=180)
-        ratio_take_profit = 0.0
-        if prev_buy_price > 0.1 * price:
-            # 1. check price
-            if 1.05*prev_buy_price < price < 1.10*prev_buy_price:
-                ratio_take_profit = 0.5
-            elif 1.10*prev_buy_price < price < 1.15*prev_buy_price:
-                ratio_take_profit = 1.0
-            elif price > 1.15*prev_buy_price:
-                ratio_take_profit = 1.5
-            else:
-                ratio_take_profit = 0.25
-            # 2. check holding time
-            if datetime_now < prev_buy_time + holding_time:
-                ratio_take_profit = ratio_take_profit * 2
-            # 3. check position
-            if prev_buy_pos > 0.7 * self.total_invest:
-                ratio_take_profit = ratio_take_profit * 2
-            ratio_take_profit = float(np.round(ratio_take_profit, 4))
-        return ratio_take_profit
+    # def check_profit(self, price: float):
+    #     '''check profit'''
+    #     avail_volume = self.get_current_position(base=True, available=True)
+    #     prev_buy_price, prev_buy_pos, prev_buy_timedelta = self.calc_avg_trade_price(direction=Direction.LONG, vol=avail_volume, timedelta=datetime.timedelta(minutes=180))
+    #     datetime_now = datetime.datetime.now(tz=MY_TZ)
+    #     prev_buy_time = datetime_now - prev_buy_timedelta
+    #     holding_time = datetime.timedelta(minutes=180)
+    #     ratio_take_profit = 0.0
+    #     if prev_buy_price > 0.1 * price:
+    #         # 1. check price
+    #         if 1.05*prev_buy_price < price < 1.10*prev_buy_price:
+    #             ratio_take_profit = 0.5
+    #         elif 1.10*prev_buy_price < price < 1.15*prev_buy_price:
+    #             ratio_take_profit = 1.0
+    #         elif price > 1.15*prev_buy_price:
+    #             ratio_take_profit = 1.5
+    #         else:
+    #             ratio_take_profit = 0.25
+    #         # 2. check holding time
+    #         if datetime_now < prev_buy_time + holding_time:
+    #             ratio_take_profit = ratio_take_profit * 2
+    #         # 3. check position
+    #         if prev_buy_pos > 0.7 * self.total_invest:
+    #             ratio_take_profit = ratio_take_profit * 2
+    #         ratio_take_profit = float(np.round(ratio_take_profit, 4))
+    #     return ratio_take_profit
 
     def release_trading_quota(self, timestep: int = 10):
         if self.timer_count % timestep == 0:
@@ -926,33 +932,33 @@ class Nightmare(CtaTemplate):
         if self.timer_count % slow_sell_step == 0:
             self.has_slow_sell_quota = True
 
-    def check_rebound(self, price: float):
-        # 1. check historical trades in 15 mins
-        datetime_now = datetime.datetime.now(tz=MY_TZ)
-        timedelta = datetime.timedelta(minutes=15)
-        avg_price = 0
-        pos = 0
-        total_timedelta = datetime.timedelta(seconds=0)
-        for i, at in enumerate(reversed(self.account_trades)):
-            if at.datetime > datetime_now - timedelta:
-                if at.direction == Direction.LONG:
-                    avg_price += at.price * at.volume
-                    pos += at.volume
-                    # datetime_last = at.datetime
-                    total_timedelta += (datetime_now - at.datetime) * at.volume
-        if pos > 0.01:
-            avg_price = avg_price / pos
-        # 2. if there is profit, sell immediately
-        ratio_fast_sell = 0.0
-        if 1.03 * avg_price < price < 1.05 * avg_price:
-            ratio_fast_sell = 0.5
-        elif 1.05 * avg_price < price < 1.10 * avg_price:
-            ratio_fast_sell = 1.0
-        elif price > 1.10 * avg_price:
-            ratio_fast_sell = 2.0
-        else:
-            ratio_fast_sell = 0.0
-        return ratio_fast_sell
+    # def check_rebound(self, price: float):
+    #     # 1. check historical trades in 15 mins
+    #     datetime_now = datetime.datetime.now(tz=MY_TZ)
+    #     timedelta = datetime.timedelta(minutes=15)
+    #     avg_price = 0
+    #     pos = 0
+    #     total_timedelta = datetime.timedelta(seconds=0)
+    #     for i, at in enumerate(reversed(self.account_trades)):
+    #         if at.datetime > datetime_now - timedelta:
+    #             if at.direction == Direction.LONG:
+    #                 avg_price += at.price * at.volume
+    #                 pos += at.volume
+    #                 # datetime_last = at.datetime
+    #                 total_timedelta += (datetime_now - at.datetime) * at.volume
+    #     if pos > 0.01:
+    #         avg_price = avg_price / pos
+    #     # 2. if there is profit, sell immediately
+    #     ratio_fast_sell = 0.0
+    #     if 1.03 * avg_price < price < 1.05 * avg_price:
+    #         ratio_fast_sell = 0.5
+    #     elif 1.05 * avg_price < price < 1.10 * avg_price:
+    #         ratio_fast_sell = 1.0
+    #     elif price > 1.10 * avg_price:
+    #         ratio_fast_sell = 2.0
+    #     else:
+    #         ratio_fast_sell = 0.0
+    #     return ratio_fast_sell
 
     def generate_order(self, price: float, volume: float, direction: Direction, precision: int = 4,
                        min_vol: float = 10.0, type=OrderType.LIMIT):
@@ -1061,99 +1067,99 @@ class Nightmare(CtaTemplate):
             volume = self.generate_volume(price=price, direction=direction, check_balance=True, check_position=True)
             self.generate_order(price=None, volume=volume, direction=direction, type=OrderType.IOC)
 
-    def chase_up(self, price: float, price_buy_ratio: float = 1.02):
-        '''
-        1. trading volume change: low to high
-        2. previous price variation
-        3. previous high low price bound
-        '''
-        # 1. check current price with previous kline: is_slip or is_climb
-        # 1. check current price with previous price: low or high
-        # 2. check previous low peaks price
-        # 3. check holding position
-        # 4. check price break kline
-        # 5. trading volume change: low to high
-        # 6. price break
+    # def chase_up(self, price: float, price_buy_ratio: float = 1.02):
+    #     '''
+    #     1. trading volume change: low to high
+    #     2. previous price variation
+    #     3. previous high low price bound
+    #     '''
+    #     # 1. check current price with previous kline: is_slip or is_climb
+    #     # 1. check current price with previous price: low or high
+    #     # 2. check previous low peaks price
+    #     # 3. check holding position
+    #     # 4. check price break kline
+    #     # 5. trading volume change: low to high
+    #     # 6. price break
+    #
+    #     # 1. check kline
+    #     bars1m = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=Interval.MINUTE)
+    #     num_kline = len(bars1m)
+    #     bars1m_data = bars1m[-360:]
+    #     low_price = np.array([bar.low_price for bar in bars1m_data])
+    #     high_price = np.array([bar.high_price for bar in bars1m_data])
+    #     # phase 1: -20:-4, phase 2: -4:len(kline)
+    #     spread_vol1, total_vol1, avg_spread_vol1 = self.calc_spread_vol_kline(start=num_kline-20, end=num_kline-4)
+    #     spread_vol2, total_vol2, avg_spread_vol2 = self.calc_spread_vol_vline(start=num_kline-4, end=num_kline)
+    #
+    #     # 1. reverse price array to find low minimal
+    #     if len(low_price) == 0:
+    #         return
+    #     peaks_low, _ = find_peaks(np.max(low_price) + 10 - low_price, distance=10, prominence=0.3, width=5)
+    #     if len(peaks_low) > 0:
+    #         bar_low = bars1m_data[peaks_low[-1]]
+    #         self.prev_low_price = bar_low.low_price
+    #     else:
+    #         self.prev_low_price = None
+    #         return
+    #     self.is_chase_up = False
+    #
+    #     # 1. check market crash
+    #     if price < price_buy_ratio*bar_low.low_price:
+    #         self.is_chase_up = True
+    #
+    #     # 2. check timestamp: 30min for buy low
+    #     if bar_low.datetime < datetime.datetime.now(tz=MY_TZ)-datetime.timedelta(minutes=30):
+    #         self.is_chase_up = False
+    #
+    #     # 3. check position
+    #     if self.is_chase_up:
+    #         '''start chasing up'''
+    #         # 1. price is in low position: check bars
+    #         cur_position = self.balance_info.data[self.base_currency].available*price
+    #         if cur_position < 0.2 * self.max_invest:
+    #             self.write_log(f'Chasing up {datetime.datetime.now(tz=MY_TZ)}')
+    #             direction = Direction.LONG
+    #             volume = self.generate_volume(price=price, direction=direction,
+    #                                           check_position=True)
+    #             self.generate_order(price=price, volume=volume, direction=direction)
+    #             #self.send_order(direction=direction, price=price, volume=volume, offset=Offset.NONE)
 
-        # 1. check kline
-        bars1m = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=Interval.MINUTE)
-        num_kline = len(bars1m)
-        bars1m_data = bars1m[-360:]
-        low_price = np.array([bar.low_price for bar in bars1m_data])
-        high_price = np.array([bar.high_price for bar in bars1m_data])
-        # phase 1: -20:-4, phase 2: -4:len(kline)
-        spread_vol1, total_vol1, avg_spread_vol1 = self.calc_spread_vol_kline(start=num_kline-20, end=num_kline-4)
-        spread_vol2, total_vol2, avg_spread_vol2 = self.calc_spread_vol_vline(start=num_kline-4, end=num_kline)
-
-        # 1. reverse price array to find low minimal
-        if len(low_price) == 0:
-            return
-        peaks_low, _ = find_peaks(np.max(low_price) + 10 - low_price, distance=10, prominence=0.3, width=5)
-        if len(peaks_low) > 0:
-            bar_low = bars1m_data[peaks_low[-1]]
-            self.prev_low_price = bar_low.low_price
-        else:
-            self.prev_low_price = None
-            return
-        self.is_chase_up = False
-
-        # 1. check market crash
-        if price < price_buy_ratio*bar_low.low_price:
-            self.is_chase_up = True
-
-        # 2. check timestamp: 30min for buy low
-        if bar_low.datetime < datetime.datetime.now(tz=MY_TZ)-datetime.timedelta(minutes=30):
-            self.is_chase_up = False
-
-        # 3. check position
-        if self.is_chase_up:
-            '''start chasing up'''
-            # 1. price is in low position: check bars
-            cur_position = self.balance_info.data[self.base_currency].available*price
-            if cur_position < 0.2 * self.max_invest:
-                self.write_log(f'Chasing up {datetime.datetime.now(tz=MY_TZ)}')
-                direction = Direction.LONG
-                volume = self.generate_volume(price=price, direction=direction,
-                                              check_position=True)
-                self.generate_order(price=price, volume=volume, direction=direction)
-                #self.send_order(direction=direction, price=price, volume=volume, offset=Offset.NONE)
-
-    def chase_rebound(self, price: float, price_buy_ratio: float = 1.03, price_sell_ratio: float = 1.05):
-        bars1m = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=Interval.MINUTE)
-        bars1m_data = bars1m[-360:]
-        low_price = np.array([bar.low_price for bar in bars1m_data])
-
-        # 1. reverse price array to find low minimal
-        if len(low_price) == 0:
-            return
-        peaks_low, _ = find_peaks(np.max(low_price) + 10 - low_price, distance=10, prominence=0.3, width=5)
-        if len(peaks_low) > 0:
-            bar_low = bars1m_data[peaks_low[-1]]
-            self.prev_low_price = bar_low.low_price
-        else:
-            self.prev_low_price = None
-            return
-
-        self.is_rebound = False
-
-        # 1. check market crash: if price rebound
-        if price < price_buy_ratio*bar_low.low_price:
-            self.is_rebound = True
-
-        # 2. check timestamp: 30min for buy low
-        if bar_low.datetime < datetime.datetime.now(tz=MY_TZ)-datetime.timedelta(minutes=15):
-            self.is_rebound = False
-
-        if self.is_rebound:
-            '''start chase rebound'''
-            # 3. check current position
-            cur_position = self.balance_info.data[self.base_currency].available*price
-            if cur_position < 0.2 * self.max_invest:
-                self.write_log(f'Chasing up {datetime.datetime.now(tz=MY_TZ)}')
-                direction = Direction.LONG
-                volume = self.generate_volume(price=price, direction=direction, check_position=True)
-                self.generate_order(price=price, volume=volume, direction=direction)
-                #self.send_order(direction=direction, price=price, volume=volume, offset=Offset.NONE)
+    # def chase_rebound(self, price: float, price_buy_ratio: float = 1.03, price_sell_ratio: float = 1.05):
+    #     bars1m = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=Interval.MINUTE)
+    #     bars1m_data = bars1m[-360:]
+    #     low_price = np.array([bar.low_price for bar in bars1m_data])
+    #
+    #     # 1. reverse price array to find low minimal
+    #     if len(low_price) == 0:
+    #         return
+    #     peaks_low, _ = find_peaks(np.max(low_price) + 10 - low_price, distance=10, prominence=0.3, width=5)
+    #     if len(peaks_low) > 0:
+    #         bar_low = bars1m_data[peaks_low[-1]]
+    #         self.prev_low_price = bar_low.low_price
+    #     else:
+    #         self.prev_low_price = None
+    #         return
+    #
+    #     self.is_rebound = False
+    #
+    #     # 1. check market crash: if price rebound
+    #     if price < price_buy_ratio*bar_low.low_price:
+    #         self.is_rebound = True
+    #
+    #     # 2. check timestamp: 30min for buy low
+    #     if bar_low.datetime < datetime.datetime.now(tz=MY_TZ)-datetime.timedelta(minutes=15):
+    #         self.is_rebound = False
+    #
+    #     if self.is_rebound:
+    #         '''start chase rebound'''
+    #         # 3. check current position
+    #         cur_position = self.balance_info.data[self.base_currency].available*price
+    #         if cur_position < 0.2 * self.max_invest:
+    #             self.write_log(f'Chasing up {datetime.datetime.now(tz=MY_TZ)}')
+    #             direction = Direction.LONG
+    #             volume = self.generate_volume(price=price, direction=direction, check_position=True)
+    #             self.generate_order(price=price, volume=volume, direction=direction)
+    #             #self.send_order(direction=direction, price=price, volume=volume, offset=Offset.NONE)
 
     def buy_slump(self, price: float):
         #if self.has_long_liquidation and not self.first_time:
@@ -1298,12 +1304,19 @@ class Nightmare(CtaTemplate):
 
     def update_vline_feature(self):
         vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
+        if len(vlines) == 0:
+            return
         datetime_now = datetime.datetime.now()
-        if len(vlines) > 0 and datetime_now - vlines[-1].close_time < datetime.timedelta(seconds=60):
-            res_spread_vol = self.update_spread_vol_vline(seconds=[15, 60, 120, 180])
-            self.update_market_event(res_spread_vol=res_spread_vol)
-            #pprint(res_spread_vol)
-            #print(self.meg.events)
+        datetime_close = vlines[-1].close_time
+        is_up2date = datetime_now - datetime_close < datetime.timedelta(seconds=60)
+        if is_up2date:
+            #res_spread_vol = self.update_spread_vol_vline(start_second=0, seconds=[15, 60, 120, 180, 300])
+            res_spread_vol = None
+            res_spread = self.update_spread_vline(start_second=0, seconds=[15, 60, 120, 180, 300])
+            res_vol = self.update_vol_vline(start_second=0, seconds=[15, 60, 120, 180, 300])
+            #print(res_spread)
+            #print(res_vol)
+            self.update_market_event(res_spread_vol=res_spread_vol, res_spread=res_spread, res_vol=res_vol)
             if False:
                 bsv = res_spread_vol[Direction.LONG]
                 ssv = res_spread_vol[Direction.SHORT]
@@ -1358,37 +1371,37 @@ class Nightmare(CtaTemplate):
         else:
             self.vol_select = vol_list[-1]
 
-    def update_market_event(self, res_spread_vol: dict):
-        datetime_now = datetime.datetime.now()
-        #print(self.last_trade)
-        if self.last_trade and datetime_now - self.last_trade.datetime > datetime.timedelta(seconds=15):
+    def update_market_event(self, res_spread_vol: dict = None, res_spread: dict = None, res_vol: dict = None):
+        if self.last_trade is None:
             return
-        #vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
-        self.check_gain_slip(res_spread_vol, use_vline=True)
-        self.check_surge_slump(res_spread_vol, use_vline=True)
-        self.check_divergence(res_spread_vol=res_spread_vol)
+        is_up2date = datetime.datetime.now() - self.last_trade.datetime < datetime.timedelta(seconds=15)
+        if not is_up2date:
+            return
+        self.check_gain_slip(res_spread_vol=res_spread_vol, res_spread=res_spread, use_vline=True)
+        self.check_surge_slump(res_spread_vol=res_spread_vol, res_spread=res_spread, res_vol=res_vol, use_vline=True)
+        self.check_divergence(start_ind=3, end_ind=20)
         self.check_trade_speed()
 
-    def update_high_low_price(self):
-        bars1m = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=Interval.MINUTE)
-        bars1m_data = bars1m[-360:]
-        low_price = np.array([bar.low_price for bar in bars1m_data])
-        high_price = np.array([bar.high_price for bar in bars1m_data])
-
-        # 1. reverse price array to find low minimal
-        if len(low_price) > 0:
-            peaks_low, _ = find_peaks(np.max(low_price) + 10 - low_price, distance=10, prominence=0.3, width=5)
-            if len(peaks_low) > 0:
-                self.prev_low_price = bars1m_data[peaks_low[-1]].low_price
-            else:
-                self.prev_low_price = None
-
-        if len(high_price) > 0:
-            peaks_high, _ = find_peaks(high_price, distance=10, prominence=0.3, width=5)
-            if len(peaks_high) > 0:
-                self.prev_high_price = bars1m_data[peaks_high[-1]].high_price
-            else:
-                self.prev_high_price = None
+    # def update_high_low_price(self):
+    #     bars1m = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=Interval.MINUTE)
+    #     bars1m_data = bars1m[-360:]
+    #     low_price = np.array([bar.low_price for bar in bars1m_data])
+    #     high_price = np.array([bar.high_price for bar in bars1m_data])
+    #
+    #     # 1. reverse price array to find low minimal
+    #     if len(low_price) > 0:
+    #         peaks_low, _ = find_peaks(np.max(low_price) + 10 - low_price, distance=10, prominence=0.3, width=5)
+    #         if len(peaks_low) > 0:
+    #             self.prev_low_price = bars1m_data[peaks_low[-1]].low_price
+    #         else:
+    #             self.prev_low_price = None
+    #
+    #     if len(high_price) > 0:
+    #         peaks_high, _ = find_peaks(high_price, distance=10, prominence=0.3, width=5)
+    #         if len(peaks_high) > 0:
+    #             self.prev_high_price = bars1m_data[peaks_high[-1]].high_price
+    #         else:
+    #             self.prev_high_price = None
 
     def update_vol(self, time_step=10):
         if self.timer_count % time_step == 0:
@@ -1439,21 +1452,21 @@ class Nightmare(CtaTemplate):
         # for vl in reversed(vlines):
         #     pass
 
-    def update_ref_price(self):
-        '''update reference price for buy and sell'''
-        # 1. choose proper vline to calculate ref price
-        kline_1m = self.kqg.get_bars(self.vt_symbol, Interval.MINUTE)
-        kltmp = kline_1m[-1000:]
-        if len(kltmp) < 100:
-            return
-        avg_vol = float(np.median([kl.amount for kl in kltmp]))
-        vol_list = self.market_params[self.symbol]['vline_vol_list']
-        vol = min([vol for vol in vol_list if vol > avg_vol*20])
-
-        self.vol_select = vol
-
-        #self.buy_price = float(np.round(self.vqg[self.vt_symbol].vq[vol].top_k_price(k=0.05), 4))
-        #self.sell_price = float(np.round(self.vqg[self.vt_symbol].vq[vol].top_k_price(k=0.95), 4))
+    # def update_ref_price(self):
+    #     '''update reference price for buy and sell'''
+    #     # 1. choose proper vline to calculate ref price
+    #     kline_1m = self.kqg.get_bars(self.vt_symbol, Interval.MINUTE)
+    #     kltmp = kline_1m[-1000:]
+    #     if len(kltmp) < 100:
+    #         return
+    #     avg_vol = float(np.median([kl.amount for kl in kltmp]))
+    #     vol_list = self.market_params[self.symbol]['vline_vol_list']
+    #     vol = min([vol for vol in vol_list if vol > avg_vol*20])
+    #
+    #     self.vol_select = vol
+    #
+    #     #self.buy_price = float(np.round(self.vqg[self.vt_symbol].vq[vol].top_k_price(k=0.05), 4))
+    #     #self.sell_price = float(np.round(self.vqg[self.vt_symbol].vq[vol].top_k_price(k=0.95), 4))
 
     def update_trade_prob(self, price: float):
         # 1. choose proper vline to calculate ref price
@@ -1692,23 +1705,17 @@ class Nightmare(CtaTemplate):
             self.trade_speed = np.round(self.trade_speed, 4)
         #self.check_surge_slump(thresh_gain=0.01, thresh_speed=30, num_vline=5)
 
-    def update_spread(self, time_step: int = 1, use_vline: bool = True):
-        if use_vline:
-            pass
-        else:
-            pass
-        if self.timer_count % time_step == 0:
-            spread_20_0, total_vol_20_0 = self.calc_spread_kline(start=-20, end=None, interval=Interval.MINUTE)
-            spread_10_0, total_vol_10_0 = self.calc_spread_kline(start=-10, end=None, interval=Interval.MINUTE)
-            spread_5_0, total_vol_5_0 = self.calc_spread_kline(start=-5, end=None, interval=Interval.MINUTE)
-            spread_3_0, total_vol_3_0 = self.calc_spread_kline(start=-3, end=None, interval=Interval.MINUTE)
-
-            self.spread_20_0 = float(np.round(spread_20_0, 8))
-            self.spread_10_0 = float(np.round(spread_10_0, 8))
-            self.spread_5_0 = float(np.round(spread_5_0, 8))
-            self.spread_3_0 = float(np.round(spread_3_0, 8))
-
-            #self.spread_20_0, self.spread_10_0, self.spread_5_0, self.spread_3_0 = spread_20_0, spread_10_0, spread_5_0, spread_3_0
+    def update_spread_vline(self, start_second=0, seconds=[15, 60, 120, 300]):
+        vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
+        start_td = datetime.timedelta(seconds=start_second)
+        # res_vol = {Direction.LONG: {}, Direction.SHORT: {}, Direction.NONE: {}}
+        # res_spread_vol = {Direction.LONG: {}, Direction.SHORT: {}, Direction.NONE: {}}
+        res_spread = {}
+        for ss in seconds:
+            end_td = datetime.timedelta(seconds=ss)
+            spread = VlineFeature.calc_spread(vlines=vlines, start_td=start_td, end_td=end_td)
+            res_spread[ss] = spread
+        return res_spread
 
     def update_vol_vline(self, start_second=0, seconds=[15, 60, 120, 180, 600, 1200]):
         vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
@@ -1731,74 +1738,29 @@ class Nightmare(CtaTemplate):
         res_spread_vol = {Direction.LONG: {}, Direction.SHORT: {}, Direction.NONE: {}}
         for ss in seconds:
             end_td = datetime.timedelta(seconds=ss)
-            spread_vol_buy = VlineFeature.calc_spread_vline(vlines=vlines, start_td=start_td, end_td=end_td,
-                                                            direction=Direction.LONG)
-            spread_vol_sell = VlineFeature.calc_spread_vline(vlines=vlines, start_td=start_td, end_td=end_td,
-                                                             direction=Direction.SHORT)
-            spread_vol_total = VlineFeature.calc_spread_vline(vlines=vlines, start_td=start_td, end_td=end_td,
-                                                              direction=Direction.SHORT)
+            spread_vol_buy = VlineFeature.calc_spread_vol(vlines=vlines, start_td=start_td, end_td=end_td,
+                                                          direction=Direction.LONG)
+            spread_vol_sell = VlineFeature.calc_spread_vol(vlines=vlines, start_td=start_td, end_td=end_td,
+                                                           direction=Direction.SHORT)
+            spread_vol_total = VlineFeature.calc_spread_vol(vlines=vlines, start_td=start_td, end_td=end_td,
+                                                            direction=Direction.SHORT)
             res_spread_vol[Direction.LONG][ss] = spread_vol_buy
             res_spread_vol[Direction.SHORT][ss] = spread_vol_sell
             res_spread_vol[Direction.NONE][ss] = spread_vol_total
 
         return res_spread_vol
-        # s0 = datetime.timedelta(seconds=0)
-        # s15s = datetime.timedelta(seconds=15)
-        # s60s = datetime.timedelta(seconds=60)
-        # s120s = datetime.timedelta(seconds=120)
-        #
-        # sv_buy_15s = VlineFeature.calc_vol(vlines=vlines, start_td=s0, end_td=s15s, direction=Direction.LONG)
-        # sv_buy_60s = VlineFeature.calc_vol(vlines=vlines, start_td=s0, end_td=s60s, direction=Direction.LONG)
-        # sv_buy_120s = VlineFeature.calc_vol(vlines=vlines, start_td=s0, end_td=s120s, direction=Direction.LONG)
-        # sv_sell_15s = VlineFeature.calc_vol(vlines=vlines, start_td=s0, end_td=s15s, direction=Direction.SHORT)
-        # sv_sell_60s = VlineFeature.calc_vol(vlines=vlines, start_td=s0, end_td=s60s, direction=Direction.SHORT)
-        # sv_sell_120s = VlineFeature.calc_vol(vlines=vlines, start_td=s0, end_td=s120s, direction=Direction.SHORT)
-        #
-        # spread_vol_buy_15s = VlineFeature.calc_spread_vline(vlines=vlines, start_td=s0, end_td=s15s,
-        #                                                     direction=Direction.LONG)
-        # spread_vol_buy_60s = VlineFeature.calc_spread_vline(vlines=vlines, start_td=s0, end_td=s60s,
-        #                                                     direction=Direction.LONG)
-        # spread_vol_buy_120s = VlineFeature.calc_spread_vline(vlines=vlines, start_td=s0, end_td=s120s,
-        #                                                      direction=Direction.LONG)
-        #
-        # spread_vol_sell_15s = VlineFeature.calc_spread_vline(vlines=vlines, start_td=s0, end_td=s15s,
-        #                                                      direction=Direction.SHORT)
-        # spread_vol_sell_60s = VlineFeature.calc_spread_vline(vlines=vlines, start_td=s0, end_td=s60s,
-        #                                                      direction=Direction.SHORT)
-        # spread_vol_sell_120s = VlineFeature.calc_spread_vline(vlines=vlines, start_td=s0, end_td=s120s,
-        #                                                       direction=Direction.SHORT)
-        #
-        # print(f'BUY:{sv_buy_15s} {sv_buy_60s} {sv_buy_120s} {spread_vol_buy_15s} {spread_vol_buy_60s}')
-        # print(f'SELL:{sv_sell_15s} {sv_sell_60s} {sv_sell_120s} {spread_vol_sell_15s} {spread_vol_sell_60s}')
-        # print()
 
-    def update_spread_vol(self, time_step: int = 1):
-        if self.timer_count % time_step == 0:
-            spread_vol_20_0, total_vol_20_0, avg_spread_vol_20_0 = self.calc_spread_vol_kline(start=-20, end=None,
-                                                                                              interval=Interval.MINUTE)
-            spread_vol_10_0, total_vol_10_0, avg_spread_vol_10_0 = self.calc_spread_vol_kline(start=-10, end=None,
-                                                                                              interval=Interval.MINUTE)
-            spread_vol_5_0, total_vol_5_0, avg_spread_vol_5_0 = self.calc_spread_vol_kline(start=-5, end=None,
-                                                                                           interval=Interval.MINUTE)
-            spread_vol_3_0, total_vol_3_0, avg_spread_vol_3_0 = self.calc_spread_vol_kline(start=-3, end=None,
-                                                                                           interval=Interval.MINUTE)
-            self.sv_20_0 = float(np.round(spread_vol_20_0, 8))
-            self.sv_10_0 = float(np.round(spread_vol_10_0, 8))
-            self.sv_5_0 = float(np.round(spread_vol_5_0, 8))
-            self.sv_3_0 = float(np.round(spread_vol_3_0, 8))
-            #self.sv_20_0, self.sv_10_0, self.sv_5_0, self.sv_3_0 = spread_vol_20_0, spread_vol_10_0, spread_vol_5_0, spread_vol_3_0
-
-    def check_gain_slip_by_kline(self, count=3):
-        kline_1m = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=Interval.MINUTE)
-        kline_tmp = kline_1m[-1 * count:]
-        close_open_ratio = [bar.close_price / bar.open_price for bar in kline_tmp]
-        high_low_ratio = [bar.high_price / bar.low_price for bar in kline_tmp]
-        gain_count = sum(
-            [int(close_open_ratio[i] > 1.005 | high_low_ratio[i] < 1.005) for i in range(close_open_ratio)])
-        slip_count = sum(
-            [int(close_open_ratio[i] < 1.005 | high_low_ratio[i] < 1.005) for i in range(close_open_ratio)])
-        self.is_gain = gain_count >= count
-        self.is_slip = slip_count >= count
+    # def check_gain_slip_by_kline(self, count=3):
+    #     kline_1m = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=Interval.MINUTE)
+    #     kline_tmp = kline_1m[-1 * count:]
+    #     close_open_ratio = [bar.close_price / bar.open_price for bar in kline_tmp]
+    #     high_low_ratio = [bar.high_price / bar.low_price for bar in kline_tmp]
+    #     gain_count = sum(
+    #         [int(close_open_ratio[i] > 1.005 | high_low_ratio[i] < 1.005) for i in range(close_open_ratio)])
+    #     slip_count = sum(
+    #         [int(close_open_ratio[i] < 1.005 | high_low_ratio[i] < 1.005) for i in range(close_open_ratio)])
+    #     self.is_gain = gain_count >= count
+    #     self.is_slip = slip_count >= count
 
     def get_spread_vol(self, res_spread_vol: dict, direction: Direction, second: int, data_type: str):
         if direction in res_spread_vol:
@@ -1807,40 +1769,68 @@ class Nightmare(CtaTemplate):
                     return res_spread_vol[direction][second][data_type]
         return None
 
-    def check_gain_slip_by_vline(self, res_spread_vol: dict):
-        vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
-        #self.is_gain = False
-        #self.is_slip = False
-        #avg_sv_buy_15s = res_spread_vol[Direction.LONG][15]
-        avg_sv_buy_15s = self.get_spread_vol(res_spread_vol, direction=Direction.LONG, second=15, data_type='avg_sv')
-        avg_sv_sell_15s = self.get_spread_vol(res_spread_vol, direction=Direction.SHORT, second=15, data_type='avg_sv')
-        avg_sv_15s = self.get_spread_vol(res_spread_vol, direction=Direction.NONE, second=15, data_type='total_vol')
-        avg_sv_buy_60s = self.get_spread_vol(res_spread_vol, direction=Direction.LONG, second=60, data_type='avg_sv')
-        avg_sv_sell_60s = self.get_spread_vol(res_spread_vol, direction=Direction.SHORT, second=60, data_type='avg_sv')
-        avg_sv_60s = self.get_spread_vol(res_spread_vol, direction=Direction.NONE, second=60, data_type='total_vol')
+    def get_spread(self, res_spread: dict, second: int):
+        if second in res_spread:
+            return res_spread[second]['spread']
+        return None
 
-        # calculate gain and slip
-        if avg_sv_buy_15s > self.sv_buy_15s_thresh or avg_sv_buy_60s > self.sv_buy_60s_thresh:
-            self.is_gain = True
-        if avg_sv_sell_15s < -1*self.sv_sell_15s_thresh or avg_sv_sell_60s < -1*self.sv_sell_60s_thresh:
-            self.is_slip = True
+    def get_vol(self, res_vol: dict, second: int, direction: Direction = Direction.NONE):
+        if direction in res_vol:
+            if second in res_vol[direction]:
+                return res_vol[direction][second]['total_vol']
+        return None
+
+    def check_gain_slip_by_vline(self, res_spread_vol: dict = None, res_spread: dict = None):
+        vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
+        if res_spread_vol is not None:
+            avg_sv_buy_15s = self.get_spread_vol(res_spread_vol, direction=Direction.LONG, second=15, data_type='avg_sv')
+            avg_sv_sell_15s = self.get_spread_vol(res_spread_vol, direction=Direction.SHORT, second=15, data_type='avg_sv')
+            #avg_sv_15s = self.get_spread_vol(res_spread_vol, direction=Direction.NONE, second=15, data_type='total_vol')
+            avg_sv_buy_60s = self.get_spread_vol(res_spread_vol, direction=Direction.LONG, second=60, data_type='avg_sv')
+            avg_sv_sell_60s = self.get_spread_vol(res_spread_vol, direction=Direction.SHORT, second=60, data_type='avg_sv')
+            #avg_sv_60s = self.get_spread_vol(res_spread_vol, direction=Direction.NONE, second=60, data_type='total_vol')
+
+            # calculate gain and slip
+            if avg_sv_buy_15s is not None and avg_sv_buy_60s is not None:
+                if avg_sv_buy_15s > self.sv_buy_15s_thresh or avg_sv_buy_60s > self.sv_buy_60s_thresh:
+                    self.is_gain = True
+            else:
+                self.is_gain = False
+            if avg_sv_sell_15s is not None and avg_sv_sell_60s is not None:
+                if avg_sv_sell_15s < -1 * self.sv_sell_15s_thresh or avg_sv_sell_60s < -1 * self.sv_sell_60s_thresh:
+                    self.is_slip = True
+            else:
+                self.is_slip = True
+
+        if res_spread is not None:
+            spread_15s = self.get_spread(res_spread=res_spread, second=15)
+            spread_1m = self.get_spread(res_spread=res_spread, second=60)
+            self.is_gain = False
+            self.is_slip = False
+            if spread_15s is not None and spread_1m is not None:
+                #if spread_15s > self.spread_15s_thresh and spread_1m > self.spread_1m_thresh:
+                if spread_1m > self.spread_1m_thresh:
+                    self.is_gain = True
+                #if spread_15s < -1 * self.spread_15s_thresh and spread_1m < -1 * self.spread_1m_thresh:
+                if spread_1m < -1*self.spread_1m_thresh:
+                    self.is_slip = True
 
         if self.is_gain:
             event_datetime = vlines[-1].close_time
             med = MarketEventData(event_type=MarketEvent.GAIN, event_datetime=event_datetime)
-            #print(med)
             self.meg.add_event_data(market_event_data=med, timeout=datetime.timedelta(minutes=1))
         if self.is_slip:
             event_datetime = vlines[-1].close_time
             med = MarketEventData(event_type=MarketEvent.SLIP, event_datetime=event_datetime)
-            #print(med)
             self.meg.add_event_data(market_event_data=med, timeout=datetime.timedelta(minutes=1))
 
-    def check_gain_slip(self, res_spread_vol: dict, use_kline=False, use_vline=False):
+    def check_gain_slip(self, res_spread_vol: dict = None,
+                        res_spread: dict = None,
+                        use_kline=False, use_vline=False):
         if use_kline and not use_vline:
             self.check_gain_slip_by_kline()
         elif not use_kline and use_vline:
-            self.check_gain_slip_by_vline(res_spread_vol=res_spread_vol)
+            self.check_gain_slip_by_vline(res_spread_vol=res_spread_vol, res_spread=res_spread)
         else:
             pass
 
@@ -1866,47 +1856,68 @@ class Nightmare(CtaTemplate):
     #     print(vlines[s2])
     #     print(vlines[e2])
 
-    def check_surge_slump(self, res_spread_vol: dict, use_kline=False, use_vline=False):
+    def check_surge_slump(self, res_spread_vol: dict = None, res_spread: dict = None, res_vol: dict = None,
+                          use_kline=False, use_vline=False):
         if use_kline and not use_vline:
             self.check_surge_slump_by_kline()
         elif not use_kline and use_vline:
-            self.check_surge_slump_by_vline(res_spread_vol=res_spread_vol)
+            self.check_surge_slump_by_vline(res_spread_vol=res_spread_vol, res_spread=res_spread, res_vol=res_vol)
         else:
             pass
 
-    def check_surge_slump_by_vline(self, res_spread_vol: dict):
+    def check_surge_slump_by_vline(self, res_spread_vol: dict = None, res_spread: dict = None, res_vol: dict = None):
         vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
-        avg_sv_buy_60s = self.get_spread_vol(res_spread_vol, direction=Direction.LONG, second=60, data_type='avg_sv')
-        avg_sv_sell_60s = self.get_spread_vol(res_spread_vol, direction=Direction.SHORT, second=60, data_type='avg_sv')
-        total_vol_60s = self.get_spread_vol(res_spread_vol, direction=Direction.NONE, second=60, data_type='total_vol')
+        if res_spread_vol is not None:
+            avg_sv_buy_60s = self.get_spread_vol(res_spread_vol, direction=Direction.LONG, second=60, data_type='avg_sv')
+            avg_sv_sell_60s = self.get_spread_vol(res_spread_vol, direction=Direction.SHORT, second=60, data_type='avg_sv')
+            total_vol_60s = self.get_spread_vol(res_spread_vol, direction=Direction.NONE, second=60, data_type='total_vol')
 
-        avg_sv_buy_120s = self.get_spread_vol(res_spread_vol, direction=Direction.LONG, second=120, data_type='avg_sv')
-        avg_sv_sell_120s = self.get_spread_vol(res_spread_vol, direction=Direction.SHORT, second=120, data_type='avg_sv')
-        total_vol_120s = self.get_spread_vol(res_spread_vol, direction=Direction.NONE, second=120, data_type='total_vol')
+            avg_sv_buy_120s = self.get_spread_vol(res_spread_vol, direction=Direction.LONG, second=120, data_type='avg_sv')
+            avg_sv_sell_120s = self.get_spread_vol(res_spread_vol, direction=Direction.SHORT, second=120, data_type='avg_sv')
+            total_vol_120s = self.get_spread_vol(res_spread_vol, direction=Direction.NONE, second=120, data_type='total_vol')
 
-        avg_sv_buy_180s = self.get_spread_vol(res_spread_vol, direction=Direction.LONG, second=180, data_type='avg_sv')
-        avg_sv_sell_180s = self.get_spread_vol(res_spread_vol, direction=Direction.SHORT, second=180, data_type='avg_sv')
-        total_vol_180s = self.get_spread_vol(res_spread_vol, direction=Direction.NONE, second=180, data_type='total_vol')
+            avg_sv_buy_180s = self.get_spread_vol(res_spread_vol, direction=Direction.LONG, second=180, data_type='avg_sv')
+            avg_sv_sell_180s = self.get_spread_vol(res_spread_vol, direction=Direction.SHORT, second=180, data_type='avg_sv')
+            total_vol_180s = self.get_spread_vol(res_spread_vol, direction=Direction.NONE, second=180, data_type='total_vol')
 
-        # calculate surge and slump
-        is_price_up = (avg_sv_buy_60s > self.sv_buy_60s_thresh) & (avg_sv_buy_120s > self.sv_buy_120s_thresh) & (avg_sv_buy_180s > self.sv_buy_180s_thresh)
-        is_price_down = (avg_sv_sell_60s < -1*self.sv_sell_60s_thresh) & (avg_sv_sell_120s < -1*self.sv_sell_120s_thresh) & (avg_sv_sell_180s < -1*self.sv_sell_180s_thresh)
-        is_high_vol = (total_vol_60s > 3*self.median_vol_100) & (total_vol_120s > 6*self.median_vol_100) & (total_vol_180s > 9*self.median_vol_100)
-        if is_price_up and is_high_vol:
-            self.is_surge = True
-        if is_price_down and is_high_vol:
-            self.is_slump = True
+            # calculate surge and slump
+            is_price_up = (avg_sv_buy_60s > self.sv_buy_60s_thresh) & (avg_sv_buy_120s > self.sv_buy_120s_thresh) & (avg_sv_buy_180s > self.sv_buy_180s_thresh)
+            is_price_down = (avg_sv_sell_60s < -1*self.sv_sell_60s_thresh) & (avg_sv_sell_120s < -1*self.sv_sell_120s_thresh) & (avg_sv_sell_180s < -1*self.sv_sell_180s_thresh)
+            is_high_vol = (total_vol_60s > 3*self.median_vol_100) & (total_vol_120s > 6*self.median_vol_100) & (total_vol_180s > 9*self.median_vol_100)
+            if is_price_up and is_high_vol:
+                self.is_surge = True
+            if is_price_down and is_high_vol:
+                self.is_slump = True
+
+        if res_spread is not None:
+            spread_1m = self.get_spread(res_spread=res_spread, second=60)
+            spread_2m = self.get_spread(res_spread=res_spread, second=120)
+            spread_3m = self.get_spread(res_spread=res_spread, second=180)
+            spread_5m = self.get_spread(res_spread=res_spread, second=300)
+            vol_1m = self.get_vol(res_vol=res_vol, second=60)
+            vol_2m = self.get_vol(res_vol=res_vol, second=120)
+            vol_3m = self.get_vol(res_vol=res_vol, second=180)
+            vol_5m = self.get_vol(res_vol=res_vol, second=300)
+            is_price_up = (spread_1m > self.spread_1m_thresh) or (spread_2m > self.spread_2m_thresh) or (spread_3m > self.spread_3m_thresh) or (spread_5m > self.spread_5m_thresh)
+            is_price_down = (spread_1m < -1*self.spread_1m_thresh) or (spread_2m < -1*self.spread_2m_thresh) or (spread_3m < -1*self.spread_3m_thresh) or (spread_5m < -1*self.spread_5m_thresh)
+            is_high_vol = (vol_1m > self.vol_1m_thresh) or (vol_2m > self.vol_2m_thresh) or (vol_3m > self.vol_3m_thresh) or (vol_5m > self.vol_5m_thresh)
+            if is_price_up and is_high_vol:
+                self.is_surge = True
+            else:
+                self.is_surge = False
+            if is_price_down and is_high_vol:
+                self.is_slump = True
+            else:
+                self.is_surge = False
 
         if self.is_surge:
             event_datetime = vlines[-1].close_time
             med = MarketEventData(event_type=MarketEvent.SURGE, event_datetime=event_datetime)
-            #print(med)
-            self.meg.add_event_data(market_event_data=med, timeout=datetime.timedelta(minutes=5))
+            self.meg.add_event_data(market_event_data=med, timeout=datetime.timedelta(minutes=3))
         if self.is_slump:
             event_datetime = vlines[-1].close_time
             med = MarketEventData(event_type=MarketEvent.SLUMP, event_datetime=event_datetime)
-            #print(med)
-            self.meg.add_event_data(market_event_data=med, timeout=datetime.timedelta(minutes=5))
+            self.meg.add_event_data(market_event_data=med, timeout=datetime.timedelta(minutes=3))
 
     def check_surge_slump_by_kline(self, thresh_gain: float = 0.01, thresh_speed: float = 10, num_vline: int = 10):
         vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
@@ -1925,55 +1936,24 @@ class Nightmare(CtaTemplate):
         self.is_surge = (price_gain > thresh_gain) & (vol_speed > thresh_speed)
         self.is_slump = (price_gain < -1*thresh_gain) & (vol_speed > thresh_speed)
 
-    # def check_gain_slip_vline(self, start: int = None, end: int = None, num_vline: int = 3, thresh: float = 0.01):
-    #     vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
-    #     if start and end and start < end and start < len(vlines) and end < len(vlines):
-    #         vline_start_end = vlines[start: end]
-    #         avg_spread_vol = np.mean([(vl.close_price-vl.open_price)/vl.open_price * vl.volume for vl in vline_start_end])
-    #         avg_vol = np.mean([vl.volume for vl in vline_start_end])
-    #         if avg_spread_vol > thresh*avg_vol:
-    #             self.is_gain = True
-    #         elif avg_spread_vol < -1*thresh*avg_vol:
-    #             self.is_slip = True
-    #         else:
-    #             self.is_gain = False
-    #             self.is_slip = False
-
-        # kline_1m = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=Interval.MINUTE)
-        # kline_tmp = kline_1m[-1 * count:]
-        # close_open_ratio = [bar.close_price / bar.open_price for bar in kline_tmp]
-        # high_low_ratio = [bar.high_price / bar.low_price for bar in kline_tmp]
-        # gain_count = sum(
-        #     [int(close_open_ratio[i] > 1.005 | high_low_ratio[i] < 1.005) for i in range(close_open_ratio)])
-        # slip_count = sum(
-        #     [int(close_open_ratio[i] < 1.005 | high_low_ratio[i] < 1.005) for i in range(close_open_ratio)])
-        # self.is_gain = gain_count >= count
-        # self.is_slip = slip_count >= count
-
-    def check_divergence(self, res_spread_vol: dict, start_ind=3, end_ind=20):
+    def check_divergence(self, start_ind=3, end_ind=20):
         vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
         kline_1m = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=Interval.MINUTE)
-        res_sv_kl_3_20 = BarFeature.calc_spread_vol(kline_1m, start=start_ind, end=end_ind, interval=Interval.MINUTE)
-        start_td = datetime.timedelta(seconds=0)
-        end_td = datetime.timedelta(seconds=180)
-        #res_sv_vl_3m = VlineFeature.calc_spread_vline(vlines=vlines, start_td=start_td, end_td=end_td, direction=Direction.LONG)
-        avg_sv_3_20 = res_sv_kl_3_20['avg_sv']
-        #avg_sv_0_3 = res_sv_vl_3m['avg_sv']
-        avg_sv_0_3 = res_spread_vol[Direction.NONE][180]['avg_sv']
-        if avg_sv_0_3 > self.sv_0_3_thresh and avg_sv_3_20 < -1*self.sv_3_20_thresh:
+        spread_0_3 = BarFeature.calc_spread(klines=kline_1m, start=0, end=start_ind, interval=Interval.MINUTE)
+        spread_3_20 = BarFeature.calc_spread(klines=kline_1m, start=start_ind, end=end_ind, interval=Interval.MINUTE)
+
+        if spread_0_3 > self.spread_3m_thresh and spread_3_20 < -4*self.spread_5m_thresh:
             self.is_bottom_divergence = True
-        if avg_sv_0_3 < -1*self.sv_0_3_thresh and avg_sv_3_20 > self.sv_3_20_thresh:
+        if spread_0_3 < -1*self.spread_3m_thresh and spread_3_20 > 4*self.spread_5m_thresh:
             self.is_top_divergence = True
 
         if self.is_bottom_divergence:
             event_datetime = vlines[-1].close_time
             med = MarketEventData(event_type=MarketEvent.BOTTOM_DIVERGENCE, event_datetime=event_datetime)
-            #print(med)
             self.meg.add_event_data(market_event_data=med, timeout=datetime.timedelta(minutes=5))
         if self.is_top_divergence:
             event_datetime = vlines[-1].close_time
             med = MarketEventData(event_type=MarketEvent.TOP_DIVERGENCE, event_datetime=event_datetime)
-            #print(med)
             self.meg.add_event_data(market_event_data=med, timeout=datetime.timedelta(minutes=5))
 
     def check_trade_speed(self):
@@ -2180,9 +2160,30 @@ class Nightmare(CtaTemplate):
     #     self.cta_engine.main_engine.connect(setting, gateway_name)
 
     def re_connect(self, timeout=10):
+
+        self.gateway.write_log("交易Websocket API失去连接")
+        # self.gateway.close()
+        # self.gateway.trade_ws_api.stop()
+
+        self.disconnect_count += 1
+        time.sleep(10 * (self.disconnect_count + 1))
+        if self.disconnect_count > 5:
+            time.sleep(300)
+            self.disconnect_count = 0
+
+        self.login()
+        self.connect(key=self.key, secret=self.secret, proxy_host=self.proxy_host, proxy_port=self.proxy_port)
+
+        for symbol in self.symbols:
+            self.gateway.write_log(f"Trade Subscribe {symbol}")
+            req = SubscribeRequest(symbol=symbol, exchange=Exchange.HUOBI)
+            self.subscribe(req=req)
+        self.subscribe_account_update()
+
         if self.last_trade:
             datetime_now = datetime.datetime.now()
-            if self.last_trade.datetime+datetime.timedelta(seconds=timeout) < datetime_now:
+            datetime_last = self.last_trade.datetime
+            if datetime_now - datetime_last > datetime.timedelta(seconds=timeout):
                 self.cta_engine.re_connect(self.strategy_name)
 
     def on_timer(self):
@@ -2222,10 +2223,9 @@ class Nightmare(CtaTemplate):
                 #self.detect_liquidation()
                 self.make_decision(price=price)
 
-            #self.re_connect()
-
         if self.timer_count % 10 == 0 and self.timer_count > 10:
             # if no market trade, re-subscribe
+            self.re_connect()
             if False:
                 dt_now = datetime.datetime.now()
                 dt_trade = self.last_trade.datetime.replace(tzinfo=None)
