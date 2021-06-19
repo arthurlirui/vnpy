@@ -175,16 +175,7 @@ class MarketActionGenerator:
 
 
 class MarketEventGenerator:
-    # default_params = {'gain_thresh': 0, 'slip_thresh': 0,
-    #                   'climb_thresh': 0, 'retreat_thresh': 0,
-    #                   'climb_count': 5, 'retreat_count': 5,
-    #                   'hover_count': 5, 'hover_thresh': 10}
-
     def __init__(self, on_event: Callable):
-        '''
-        current market event and timestamp
-        '''
-        # event list
         self.on_event = on_event
         self.events = {}
         self.events[MarketEvent.SURGE] = []
@@ -202,11 +193,14 @@ class MarketEventGenerator:
                 latest_event = self.events[event_type][-1]
                 if datetime_now - latest_event.event_datetime > timeout:
                     self.events[event_type].append(market_event_data)
+                    self.on_event(market_event_data)
             else:
                 self.events[event_type].append(market_event_data)
+                self.on_event(market_event_data)
         else:
             self.events[event_type] = []
             self.events[event_type].append(market_event_data)
+            self.on_event(market_event_data)
 
     def get_latest_event(self, event_type: MarketEvent):
         if event_type in self.events:
