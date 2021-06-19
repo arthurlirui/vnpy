@@ -14,10 +14,22 @@ class BarFeature:
         return (kl.close_price - kl.open_price) / kl.open_price * kl.volume
 
     @staticmethod
-    def calc_spread_vol(klines=[],
-                        start: int = 0,
-                        end: int = 0,
-                        interval: Interval = Interval.MINUTE):
+    def spread(kl: BarData):
+        return (kl.close_price - kl.open_price) / kl.open_price
+
+    @staticmethod
+    def calc_spread(klines=[], start: int = 0, end: int = 0, interval: Interval = Interval.MINUTE):
+        total_spread = 0
+        if 0 <= start < end <= len(klines):
+            if not klines[0].interval == interval:
+                return total_spread
+            if start < end:
+                kline_start_end = list(reversed(klines))[start: end]
+                total_spread = np.sum([BarFeature.spread(kl) for kl in kline_start_end])
+        return total_spread
+
+    @staticmethod
+    def calc_spread_vol(klines=[], start: int = 0, end: int = 0, interval: Interval = Interval.MINUTE):
         '''
         :param klines: list of BarData
         :param start: start index
@@ -43,9 +55,6 @@ class BarFeature:
                 return res_spread_vol
         else:
             return res_spread_vol
-
-    def detect_outlier_vol(self, klines=[], low_ratio=0.05, high_ratio=0.95):
-        pass
 
 
 class VlineFeature:
@@ -90,8 +99,7 @@ class VlineFeature:
         return (x.close_price - x.open_price) / x.open_price * x.volume
 
     @staticmethod
-    def calc_spread(vlines=[], start: int = None, end: int = None, start_td: timedelta = None,
-                    end_td: timedelta = None) -> float:
+    def calc_spread(vlines=[], start: int = None, end: int = None, start_td: timedelta = None, end_td: timedelta = None) -> float:
         spread = 0
         def spread_func(x): return (x.close_price - x.open_price) / x.open_price
         if start_td is not None and end_td is not None:
@@ -168,5 +176,15 @@ class VlineFeature:
         td = end_td - start_td
         res = VlineFeature.calc_vol(vlines=vlines, start_td=start_td, end_td=end_td, direction=direction)
         speed = res['total_vol'] / td.total_seconds()
-        res = {'speed': float(speed)}
+        #res = {'speed': float(speed)}
+        res = float(speed)
         return res
+
+
+class MarketEventFeature:
+    def __init__(self):
+        pass
+
+    @staticmethod
+    def check_gain():
+        pass
