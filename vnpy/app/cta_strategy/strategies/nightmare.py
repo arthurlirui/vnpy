@@ -5,7 +5,7 @@ from vnpy.trader.utility import VlineGenerator, MarketEventGenerator, VlineQueue
 from typing import Any, Callable
 from scipy.signal import argrelextrema, argrelmin, argrelmax
 import numpy as np
-import random, math, datetime, os
+import random, math, datetime, os, time
 import matplotlib.pyplot as plt
 #from scipy.misc import electrocardiogram
 from scipy.signal import find_peaks
@@ -1162,7 +1162,6 @@ class Nightmare(CtaTemplate):
     #             #self.send_order(direction=direction, price=price, volume=volume, offset=Offset.NONE)
 
     def buy_slump(self, price: float):
-        #if self.has_long_liquidation and not self.first_time:
         # 1. don't buy in top divergence
         top_div_events = self.meg.events[MarketEvent.TOP_DIVERGENCE]
         is_top_divergence = False
@@ -1170,6 +1169,7 @@ class Nightmare(CtaTemplate):
             last_top_div_event = top_div_events[-1]
             if datetime.datetime.now() - last_top_div_event.event_datetime > datetime.timedelta(minutes=30):
                 is_top_divergence = True
+
         # 2. don't buy after surge
         surge_events = self.meg.events[MarketEvent.SURGE]
         is_surge = False
@@ -1177,7 +1177,15 @@ class Nightmare(CtaTemplate):
             last_surge_event = surge_events[-1]
             if datetime.datetime.now() - last_surge_event.event_datetime > datetime.timedelta(minutes=60):
                 is_surge = True
-        if self.is_slump and not is_top_divergence and not is_surge and not self.first_time:
+
+        # 3. check current slump signal
+        slump_events = self.meg.events[MarketEvent.SLUMP]
+        is_slump = False
+        if len(slump_events) > 0:
+            last_slump_event = slump_events[-1]
+            if datetime.datetime.now() - last_slump_event.event_datetime < datetime.timedelta(minutes=5):
+                is_slump = True
+        if is_slump and not is_top_divergence and not is_surge and not self.first_time:
             direction = Direction.LONG
             # 1. price is in low position: check bars
             #cur_position = self.get_current_position(quote=True, available=True)
@@ -1217,7 +1225,15 @@ class Nightmare(CtaTemplate):
             last_slump_event = slump_events[-1]
             if datetime.datetime.now() - last_slump_event.event_datetime > datetime.timedelta(minutes=10):
                 is_slump = True
-        if self.is_surge and not is_bottom_divergence and not is_slump and not self.first_time:
+
+        # 3. sell at surge
+        surge_events = self.meg.events[MarketEvent.SURGE]
+        is_surge = False
+        if len(surge_events) > 0:
+            last_surge_event = surge_events[-1]
+            if datetime.datetime.now() - last_surge_event.event_datetime < datetime.timedelta(minutes=3):
+                is_surge = True
+        if is_surge and not is_bottom_divergence and not is_slump and not self.first_time:
             if self.cur_sell_vol < self.short_term_trading_vol:
                 direction = Direction.SHORT
                 volume = self.generate_volume(price=price, direction=direction, check_position=True)
@@ -1362,6 +1378,11 @@ class Nightmare(CtaTemplate):
             return
         self.median_vol_100 = float(np.median([kl.amount for kl in kl100]))
         self.median_vol_1000 = float(np.median([kl.amount for kl in kl1000]))
+        self.median_vol = float(min(self.median_vol_100, self.median_vol_1000))
+        self.vol_1m_thresh = 1 * 3 * self.median_vol
+        self.vol_2m_thresh = 2 * 3 * self.median_vol
+        self.vol_3m_thresh = 3 * 3 * self.median_vol
+        self.vol_5m_thresh = 5 * 3 * self.median_vol
 
         # update vol select for price distribution
         vol_list = self.market_params[self.symbol]['vline_vol_list']
@@ -1381,6 +1402,30 @@ class Nightmare(CtaTemplate):
         self.check_surge_slump(res_spread_vol=res_spread_vol, res_spread=res_spread, res_vol=res_vol, use_vline=True)
         self.check_divergence(start_ind=3, end_ind=20)
         self.check_trade_speed()
+
+        # update market event flag
+        datetime_now = datetime.datetime.now()
+        datetime_last = self.last_trade.datetime
+        for event_type in self.meg.events:
+            events = self.meg.events[event_type]
+            if len(events) == 0:
+                continue
+            last_event = events[-1]
+            datetime_last = last_event.event_datetime
+            if datetime_now - datetime_last > datetime.timedelta(seconds=60):
+                if last_event.event_type == MarketEvent.SLUMP:
+                    self.is_slump = False
+                if last_event.event_type == MarketEvent.SURGE:
+                    self.is_surge = False
+                if last_event.event_type == MarketEvent.TOP_DIVERGENCE:
+                    self.is_top_divergence = False
+                if last_event.event_type == MarketEvent.BOTTOM_DIVERGENCE:
+                    self.is_bottom_divergence = False
+                if last_event.event_type == MarketEvent.GAIN:
+                    self.is_gain = False
+                if last_event.event_type == MarketEvent.SLIP:
+                    self.is_slip = False
+
 
     # def update_high_low_price(self):
     #     bars1m = self.kqg.get_bars(vt_symbol=self.vt_symbol, interval=Interval.MINUTE)
@@ -1403,30 +1448,31 @@ class Nightmare(CtaTemplate):
     #         else:
     #             self.prev_high_price = None
 
-    def update_vol(self, time_step=10):
-        if self.timer_count % time_step == 0:
-            self.cur_buy_vol = 0
-            self.cur_sell_vol = 0
 
-            events = self.meg.events
-            for event_type in events:
-                event_list = events[event_type]
-                if len(event_list) > 0:
-                    last_event = event_list[-1]
-                    dateitme_now = datetime.datetime.now()
-                    if dateitme_now - last_event.event_datetime > datetime.timedelta(minutes=1):
-                        if last_event.event_type == MarketEvent.GAIN:
-                            self.is_gain = False
-                        if last_event.event_type == MarketEvent.SLIP:
-                            self.is_slip = False
-                        if last_event.event_type == MarketEvent.SLUMP:
-                            self.is_slump = False
-                        if last_event.event_type == MarketEvent.SURGE:
-                            self.is_surge = False
-                        if last_event.event_type == MarketEvent.TOP_DIVERGENCE:
-                            self.is_top_divergence = False
-                        if last_event.event_type == MarketEvent.BOTTOM_DIVERGENCE:
-                            self.is_bottom_divergence = False
+    # def update_vol(self, time_step=10):
+    #     if self.timer_count % time_step == 0:
+    #         self.cur_buy_vol = 0
+    #         self.cur_sell_vol = 0
+    #
+    #         events = self.meg.events
+    #         for event_type in events:
+    #             event_list = events[event_type]
+    #             if len(event_list) > 0:
+    #                 last_event = event_list[-1]
+    #                 dateitme_now = datetime.datetime.now()
+    #                 if dateitme_now - last_event.event_datetime > datetime.timedelta(minutes=1):
+    #                     if last_event.event_type == MarketEvent.GAIN:
+    #                         self.is_gain = False
+    #                     if last_event.event_type == MarketEvent.SLIP:
+    #                         self.is_slip = False
+    #                     if last_event.event_type == MarketEvent.SLUMP:
+    #                         self.is_slump = False
+    #                     if last_event.event_type == MarketEvent.SURGE:
+    #                         self.is_surge = False
+    #                     if last_event.event_type == MarketEvent.TOP_DIVERGENCE:
+    #                         self.is_top_divergence = False
+    #                     if last_event.event_type == MarketEvent.BOTTOM_DIVERGENCE:
+    #                         self.is_bottom_divergence = False
 
         # kline_1m = self.kqg.get_bars(self.vt_symbol, Interval.MINUTE)
         # kltmp = kline_1m[-1000:]
@@ -1782,7 +1828,7 @@ class Nightmare(CtaTemplate):
 
     def check_gain_slip_by_vline(self, res_spread_vol: dict = None, res_spread: dict = None):
         vlines = self.vg[self.vt_symbol].vlines[self.vline_vol]
-        if res_spread_vol is not None:
+        if False or res_spread_vol is not None:
             avg_sv_buy_15s = self.get_spread_vol(res_spread_vol, direction=Direction.LONG, second=15, data_type='avg_sv')
             avg_sv_sell_15s = self.get_spread_vol(res_spread_vol, direction=Direction.SHORT, second=15, data_type='avg_sv')
             #avg_sv_15s = self.get_spread_vol(res_spread_vol, direction=Direction.NONE, second=15, data_type='total_vol')
@@ -1794,13 +1840,13 @@ class Nightmare(CtaTemplate):
             if avg_sv_buy_15s is not None and avg_sv_buy_60s is not None:
                 if avg_sv_buy_15s > self.sv_buy_15s_thresh or avg_sv_buy_60s > self.sv_buy_60s_thresh:
                     self.is_gain = True
-            else:
-                self.is_gain = False
+            #else:
+            #    self.is_gain = False
             if avg_sv_sell_15s is not None and avg_sv_sell_60s is not None:
                 if avg_sv_sell_15s < -1 * self.sv_sell_15s_thresh or avg_sv_sell_60s < -1 * self.sv_sell_60s_thresh:
                     self.is_slip = True
-            else:
-                self.is_slip = True
+            #else:
+            #    self.is_slip = True
 
         if res_spread is not None:
             spread_15s = self.get_spread(res_spread=res_spread, second=15)
@@ -1818,10 +1864,12 @@ class Nightmare(CtaTemplate):
         if self.is_gain:
             event_datetime = vlines[-1].close_time
             med = MarketEventData(event_type=MarketEvent.GAIN, event_datetime=event_datetime)
+            print(spread_1m, med)
             self.meg.add_event_data(market_event_data=med, timeout=datetime.timedelta(minutes=1))
         if self.is_slip:
             event_datetime = vlines[-1].close_time
             med = MarketEventData(event_type=MarketEvent.SLIP, event_datetime=event_datetime)
+            print(spread_1m, med)
             self.meg.add_event_data(market_event_data=med, timeout=datetime.timedelta(minutes=1))
 
     def check_gain_slip(self, res_spread_vol: dict = None,
@@ -1944,8 +1992,12 @@ class Nightmare(CtaTemplate):
 
         if spread_0_3 > self.spread_3m_thresh and spread_3_20 < -4*self.spread_5m_thresh:
             self.is_bottom_divergence = True
+        else:
+            self.is_bottom_divergence = False
         if spread_0_3 < -1*self.spread_3m_thresh and spread_3_20 > 4*self.spread_5m_thresh:
             self.is_top_divergence = True
+        else:
+            self.is_top_divergence = False
 
         if self.is_bottom_divergence:
             event_datetime = vlines[-1].close_time
@@ -2159,32 +2211,40 @@ class Nightmare(CtaTemplate):
     #     setting = load_json(os.path.join(filepath, f'connect_{gateway_name.lower()}.json'))
     #     self.cta_engine.main_engine.connect(setting, gateway_name)
 
-    def re_connect(self, timeout=10):
-
-        self.gateway.write_log("交易Websocket API失去连接")
-        # self.gateway.close()
-        # self.gateway.trade_ws_api.stop()
-
-        self.disconnect_count += 1
-        time.sleep(10 * (self.disconnect_count + 1))
-        if self.disconnect_count > 5:
-            time.sleep(300)
-            self.disconnect_count = 0
-
-        self.login()
-        self.connect(key=self.key, secret=self.secret, proxy_host=self.proxy_host, proxy_port=self.proxy_port)
-
-        for symbol in self.symbols:
-            self.gateway.write_log(f"Trade Subscribe {symbol}")
-            req = SubscribeRequest(symbol=symbol, exchange=Exchange.HUOBI)
-            self.subscribe(req=req)
-        self.subscribe_account_update()
-
+    def re_connect(self, timeout=20):
         if self.last_trade:
             datetime_now = datetime.datetime.now()
             datetime_last = self.last_trade.datetime
             if datetime_now - datetime_last > datetime.timedelta(seconds=timeout):
-                self.cta_engine.re_connect(self.strategy_name)
+                gateway = self.cta_engine.main_engine.get_gateway(gateway_name=self.exchange)
+                gateway.close()
+                gateway.market_ws_api.on_disconnected()
+                gateway.trade_ws_api.on_disconnected()
+
+        # self.gateway.write_log("交易Websocket API失去连接")
+        # # self.gateway.close()
+        # # self.gateway.trade_ws_api.stop()
+        #
+        # self.disconnect_count += 1
+        # time.sleep(10 * (self.disconnect_count + 1))
+        # if self.disconnect_count > 5:
+        #     time.sleep(300)
+        #     self.disconnect_count = 0
+        #
+        # self.login()
+        # self.connect(key=self.key, secret=self.secret, proxy_host=self.proxy_host, proxy_port=self.proxy_port)
+        #
+        # for symbol in self.symbols:
+        #     self.gateway.write_log(f"Trade Subscribe {symbol}")
+        #     req = SubscribeRequest(symbol=symbol, exchange=Exchange.HUOBI)
+        #     self.subscribe(req=req)
+        # self.subscribe_account_update()
+        #
+        # if self.last_trade:
+        #     datetime_now = datetime.datetime.now()
+        #     datetime_last = self.last_trade.datetime
+        #     if datetime_now - datetime_last > datetime.timedelta(seconds=timeout):
+        #         self.cta_engine.re_connect(self.strategy_name)
 
     def on_timer(self):
         '''
@@ -2209,7 +2269,7 @@ class Nightmare(CtaTemplate):
         self.update_market_trade(time_step=1)
         self.update_volume_feature()
         self.update_vline_feature()
-        self.update_vol()
+        #self.update_vol()
         #self.update_spread_vol_vline()
         #self.update_price_gain_speed_vline(num_vline=3, time_step=1)
         #self.update_spread_vol(time_step=10)
